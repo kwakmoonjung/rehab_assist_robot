@@ -35,6 +35,7 @@ setup(
             'robot_control = robot_control.robot_control:main',
             'object_detection = object_detection.detection:main',
             'get_keyword = voice_processing.get_keyword:main',
+            'tracking_pose = object_detection.tracking_pose:main',
         ],
     },
 )
