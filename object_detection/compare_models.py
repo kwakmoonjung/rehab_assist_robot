@@ -16,7 +16,9 @@ def main():
         "MediaPipe": "/home/rokey/cobot_ws/src/cobot2_ws/rehab_assist_robot/object_detection/pose_metrics.csv",
         "MoveNet": "/home/rokey/cobot_ws/src/cobot2_ws/rehab_assist_robot/object_detection/movenet_metrics.csv",
         "YOLOv8": "/home/rokey/cobot_ws/src/cobot2_ws/rehab_assist_robot/object_detection/yolo_metrics.csv",
-        "YOLO11": "/home/rokey/cobot_ws/src/cobot2_ws/rehab_assist_robot/object_detection/yolo11_metrics.csv"
+        "YOLO11": "/home/rokey/cobot_ws/src/cobot2_ws/rehab_assist_robot/object_detection/yolo11_metrics.csv",
+        "YOLO11n": "/tmp/yolo11n_metrics.csv",
+        "YOLO11s": "/tmp/yolo11s_metrics.csv"
     }
 
     # 데이터 로드 및 정규화
@@ -38,7 +40,7 @@ def main():
     fig, axs = plt.subplots(3, 1, figsize=(12, 16))
     fig.suptitle('AI Pose Estimation Benchmark: YOLO11 vs Others', fontsize=16, fontweight='bold')
 
-    colors = {"MediaPipe": "dodgerblue", "MoveNet": "purple", "YOLOv8": "orange", "YOLO11": "crimson"}
+    colors = {"MediaPipe": "dodgerblue", "MoveNet": "purple", "YOLOv8": "orange", "YOLO11": "crimson", "YOLO11n": "green", "YOLO11s": "magenta"} # [추가] YOLO11n 색상 지정
 
     # [1] Elbow Angle Tracking
     for name, df in data.items():
