@@ -3,10 +3,9 @@
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float32
+from std_srvs.srv import Trigger
 import numpy as np
 import time
-
-from correction_robot import CorrectionRobot
 
 
 class RehabManager(Node):
@@ -17,16 +16,19 @@ class RehabManager(Node):
 
         self.angles = []
 
-        self.subscription = self.create_subscription(
+        self.create_subscription(
             Float32,
             "/rehab/elbow_angle",
             self.angle_callback,
             10
         )
 
-        self.robot = CorrectionRobot()
+        self.client = self.create_client(
+            Trigger,
+            "/correction/start"
+        )
 
-        self.get_logger().info("rehab manager started")
+        self.get_logger().info("Rehab manager started")
 
     def angle_callback(self,msg):
 
@@ -34,22 +36,26 @@ class RehabManager(Node):
 
     def analyze_session(self):
 
-        if len(self.angles) < 5:
+        if len(self.angles) < 10:
 
-            print("not enough data")
-
+            print("데이터 부족")
             return False
 
-        min_angle = np.min(self.angles)
-        max_angle = np.max(self.angles)
+        angles = np.array(self.angles)
 
-        print("analysis result")
-        print("min:",min_angle)
+        max_angle = np.max(angles)
+        min_angle = np.min(angles)
+
+        ROM = max_angle - min_angle
+
+        print("===== 분석 =====")
         print("max:",max_angle)
+        print("min:",min_angle)
+        print("ROM:",ROM)
 
         if max_angle < 110:
 
-            print("팔이 충분히 올라가지 않았습니다")
+            print("교정 필요")
 
             return True
 
@@ -57,7 +63,7 @@ class RehabManager(Node):
 
     def run_session(self):
 
-        print("운동 시작 (10초 기록)")
+        print("운동 기록 시작 (10초)")
 
         start = time.time()
 
@@ -65,19 +71,17 @@ class RehabManager(Node):
 
             rclpy.spin_once(self)
 
-        print("운동 종료")
+        print("기록 종료")
 
-        need_correction = self.analyze_session()
+        if self.analyze_session():
 
-        if need_correction:
+            req = Trigger.Request()
 
-            print("교정 시작")
+            future = self.client.call_async(req)
 
-            self.robot.correct_z_up()
+            rclpy.spin_until_future_complete(self,future)
 
-        else:
-
-            print("정상 자세")
+            print("교정 명령 전송")
 
 
 def main():
