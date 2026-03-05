@@ -33,6 +33,7 @@ setup(
     entry_points={
         'console_scripts': [
             'robot_control = robot_control.robot_control:main',
+            'robot_control_detect = robot_control.robot_control_detect:main',
             'object_detection = object_detection.detection:main',
             'get_keyword = voice_processing.get_keyword:main',
             'tracking_pose = object_detection.tracking_pose:main',
