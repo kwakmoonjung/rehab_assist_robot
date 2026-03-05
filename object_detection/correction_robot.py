@@ -25,7 +25,7 @@ class CorrectionRobot(Node):
 
         super().__init__("correction_robot")
 
-        self.wrist_pos = None
+        self.wrist = None
 
         self.create_subscription(
             Point,
@@ -37,29 +37,27 @@ class CorrectionRobot(Node):
         self.create_service(
             Trigger,
             "/correction/start",
-            self.start_correction
+            self.correction_service
         )
-
-        self.get_logger().info("Correction robot ready")
 
     def wrist_callback(self,msg):
 
-        self.wrist_pos = msg
+        self.wrist = msg
 
-    def start_correction(self,request,response):
+    def correction_service(self,req,res):
 
-        if self.wrist_pos is None:
+        if self.wrist is None:
 
-            response.success=False
-            return response
+            res.success=False
+            return res
 
         robot_pose = get_current_posx()[0]
 
         start_pose = [
 
-            self.wrist_pos.x,
-            self.wrist_pos.y,
-            self.wrist_pos.z,
+            self.wrist.x,
+            self.wrist.y,
+            self.wrist.z,
             robot_pose[3],
             robot_pose[4],
             robot_pose[5]
@@ -68,9 +66,9 @@ class CorrectionRobot(Node):
 
         target_pose = [
 
-            self.wrist_pos.x,
-            self.wrist_pos.y,
-            self.wrist_pos.z + 100,
+            self.wrist.x,
+            self.wrist.y,
+            self.wrist.z + 100,
             robot_pose[3],
             robot_pose[4],
             robot_pose[5]
@@ -80,8 +78,9 @@ class CorrectionRobot(Node):
         movel(start_pose,vel=VEL,acc=ACC)
         movel(target_pose,vel=VEL,acc=ACC)
 
-        response.success=True
-        return response
+        res.success=True
+
+        return res
 
 
 def main():

@@ -7,8 +7,8 @@ import numpy as np
 from std_msgs.msg import Float32
 from geometry_msgs.msg import Point
 
-from object_detection.realsense import ImgNode
 from ultralytics import YOLO
+from object_detection.realsense import ImgNode
 
 
 class ObjectDetectionNode(Node):
@@ -33,12 +33,21 @@ class ObjectDetectionNode(Node):
             10
         )
 
-        self.timer = self.create_timer(
-            0.03,
-            self.loop
-        )
+        # camera intrinsics (캘리브레이션 값 입력)
+        self.fx = 615.0
+        self.fy = 615.0
+        self.cx = 320.0
+        self.cy = 240.0
 
-        self.get_logger().info("YOLO pose detection started")
+        # camera → robot transform (예시)
+        self.T_cam_robot = np.array([
+            [1,0,0,0],
+            [0,1,0,0],
+            [0,0,1,0],
+            [0,0,0,1]
+        ])
+
+        self.timer = self.create_timer(0.03, self.loop)
 
     def loop(self):
 
@@ -76,11 +85,29 @@ class ObjectDetectionNode(Node):
 
         self.angle_pub.publish(angle_msg)
 
-        wrist_msg = Point()
+        # depth
+        depth = self.img_node.get_depth(
+            int(wrist[0]),
+            int(wrist[1])
+        )
 
-        wrist_msg.x = float(wrist[0])
-        wrist_msg.y = float(wrist[1])
-        wrist_msg.z = 0.0
+        if depth is None:
+            return
+
+        p_cam = self.pixel_to_camera(
+            wrist[0],
+            wrist[1],
+            depth
+        )
+
+        p_robot = self.camera_to_robot(
+            p_cam
+        )
+
+        wrist_msg = Point()
+        wrist_msg.x = float(p_robot[0])
+        wrist_msg.y = float(p_robot[1])
+        wrist_msg.z = float(p_robot[2])
 
         self.wrist_pub.publish(wrist_msg)
 
@@ -98,6 +125,21 @@ class ObjectDetectionNode(Node):
         )
 
         return angle
+
+    def pixel_to_camera(self,u,v,z):
+
+        X = (u - self.cx) * z / self.fx
+        Y = (v - self.cy) * z / self.fy
+
+        return np.array([X,Y,z])
+
+    def camera_to_robot(self,p):
+
+        p4 = np.append(p,1)
+
+        pr = self.T_cam_robot @ p4
+
+        return pr[:3]
 
 
 def main():

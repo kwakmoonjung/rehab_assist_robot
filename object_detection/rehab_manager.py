@@ -28,8 +28,6 @@ class RehabManager(Node):
             "/correction/start"
         )
 
-        self.get_logger().info("Rehab manager started")
-
     def angle_callback(self,msg):
 
         self.angles.append(msg.data)
@@ -37,8 +35,6 @@ class RehabManager(Node):
     def analyze_session(self):
 
         if len(self.angles) < 10:
-
-            print("데이터 부족")
             return False
 
         angles = np.array(self.angles)
@@ -48,7 +44,6 @@ class RehabManager(Node):
 
         ROM = max_angle - min_angle
 
-        print("===== 분석 =====")
         print("max:",max_angle)
         print("min:",min_angle)
         print("ROM:",ROM)
@@ -63,15 +58,11 @@ class RehabManager(Node):
 
     def run_session(self):
 
-        print("운동 기록 시작 (10초)")
-
         start = time.time()
 
         while time.time() - start < 10:
 
             rclpy.spin_once(self)
-
-        print("기록 종료")
 
         if self.analyze_session():
 
@@ -80,8 +71,6 @@ class RehabManager(Node):
             future = self.client.call_async(req)
 
             rclpy.spin_until_future_complete(self,future)
-
-            print("교정 명령 전송")
 
 
 def main():
