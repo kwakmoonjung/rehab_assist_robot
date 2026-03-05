@@ -23,7 +23,7 @@ class PoseTrackingNode(Node):
         self.angle_pub = self.create_publisher(Float32, '/patient_elbow_angle', 10)
         
         # Tasks API 설정 및 모델 로드 (다운로드 받은 .task 파일 경로 지정)
-        model_path = '/home/rokey/cobot_ws/src/rehab_vision/rehab_vision/pose_landmarker_lite.task'
+        model_path = '/home/rokey/cobot_ws/src/cobot2_ws/rehab_assist_robot/object_detection/pose_landmarker_lite.task'
         
         base_options = python.BaseOptions(model_asset_path=model_path)
         options = vision.PoseLandmarkerOptions(
