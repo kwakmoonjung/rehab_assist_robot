@@ -11,12 +11,8 @@ def main():
         plt.rc('font', family='NanumBarunGothic')
     plt.rcParams['axes.unicode_minus'] = False
 
-    # 성적표 경로 리스트 (YOLO11 추가)
+    # [수정] 성적표 경로 리스트 (YOLO11n, YOLO11s만 남김)
     paths = {
-        "MediaPipe": "/home/rokey/cobot_ws/src/cobot2_ws/rehab_assist_robot/object_detection/pose_metrics.csv",
-        "MoveNet": "/home/rokey/cobot_ws/src/cobot2_ws/rehab_assist_robot/object_detection/movenet_metrics.csv",
-        "YOLOv8": "/home/rokey/cobot_ws/src/cobot2_ws/rehab_assist_robot/object_detection/yolo_metrics.csv",
-        "YOLO11": "/home/rokey/cobot_ws/src/cobot2_ws/rehab_assist_robot/object_detection/yolo11_metrics.csv",
         "YOLO11n": "/tmp/yolo11n_metrics.csv",
         "YOLO11s": "/tmp/yolo11s_metrics.csv"
     }
@@ -30,21 +26,25 @@ def main():
             df['Time_s'] = df['Timestamp'] - df['Timestamp'].iloc[0]
             data[name] = df
         else:
-            print(f"⚠️ {name} 데이터가 없습니다. ({path})")
+            print(f"{name} 데이터가 없습니다. ({path})")
 
     if not data:
-        print("❌ 비교할 데이터가 없습니다.")
+        print("비교할 데이터가 없습니다.")
         return
 
     plt.style.use('ggplot')
     fig, axs = plt.subplots(3, 1, figsize=(12, 16))
-    fig.suptitle('AI Pose Estimation Benchmark: YOLO11 vs Others', fontsize=16, fontweight='bold')
+    
+    # [수정] 그래프 제목 변경
+    fig.suptitle('AI Pose Estimation Benchmark: YOLO11n vs YOLO11s', fontsize=16, fontweight='bold')
 
-    colors = {"MediaPipe": "dodgerblue", "MoveNet": "purple", "YOLOv8": "orange", "YOLO11": "crimson", "YOLO11n": "green", "YOLO11s": "magenta"} # [추가] YOLO11n 색상 지정
+    # [수정] 색상 지정 (YOLO11n, YOLO11s만 남김)
+    colors = {"YOLO11n": "green", "YOLO11s": "magenta"}
 
     # [1] Elbow Angle Tracking
     for name, df in data.items():
-        lw = 2.5 if name == "YOLO11" else 1.2
+        # [수정] 선 굵기 동일하게 설정
+        lw = 2.0 
         axs[0].plot(df['Time_s'], df['Angle'], label=name, color=colors[name], alpha=0.8, linewidth=lw)
     axs[0].axhline(y=90, color='black', linestyle='--', label='Target (90°)')
     axs[0].set_title("1. Elbow Angle Tracking (정확도 및 가동 범위)")
@@ -59,7 +59,7 @@ def main():
     axs[1].set_ylabel("FPS")
     axs[1].legend(loc='lower right')
 
-    # [3] Jitter Analysis (생략 가능하나 유용함)
+    # [3] Jitter Analysis 
     for name, df in data.items():
         # 각도의 변화량(Jitter) 계산
         jitter = df['Angle'].diff().abs().fillna(0)

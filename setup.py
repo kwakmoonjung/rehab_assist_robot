@@ -37,6 +37,7 @@ setup(
             'get_keyword = voice_processing.get_keyword:main',
             'rtm_pose = object_detection.rtm_pose:main',
             'yolo11_pose = object_detection.yolo11_pose:main',
+            'compare_models = object_detection.compare_models:main',
         ],
     },
 )

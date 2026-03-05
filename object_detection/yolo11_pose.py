@@ -20,7 +20,7 @@ class YOLO11PoseNode(Node):
         self.model = YOLO('yolo11n-pose.pt')
         
         # [핵심] 로그 파일 설정
-        self.log_file_path = '/tmp/yolo11_metrics.csv'
+        self.log_file_path = '/tmp/yolo11n_metrics.csv'
         with open(self.log_file_path, mode='w', newline='') as file:
             writer = csv.writer(file)
             writer.writerow(["Timestamp", "FPS", "Angle"]) # 헤더 작성
