@@ -7,8 +7,12 @@ T_cam2base_diff_check2.npy ? 어떤 데이터로 돌린건지 모르겠음
 T_gripper2camera_diff_braket.npy 로봇팔에 달려있는 뎁스카메라 캘리브레이션 결과, 바뀐 브라켓 (강사님 제공)
 
 2. 실행 파일
-translatematrix.py -> 기존의 eye2hand_calibration.py 에서 구조 변경
-eye2hand_calibration_diff_check.py -> 큰 체커보드에 맞게 체커 사이즈 변경
+- translatematrix.py -> 기존의 eye2hand_calibration.py 에서 구조 변경
+- eye2hand_calibration_diff_check.py -> 큰 체커보드에 맞게 체커 사이즈 변경
+- erase_background.py 
+이미지 데이터에서 체커보드 박스처리하면 배경 삭제해주는 파일. 이미지의 배경 문제가 아니었어서 실질적으로 사용 X
+- eye2hand_calibration_opencv.py
+opencv 함수를 활용하여 캘리브레이션, DANIILIDIS 방식으로 진행. 캘리브레이션 자체는 되나 결과가 별로임
 
 3. 원본강의코드 폴더: 기존 강의 코드
 

@@ -276,7 +276,7 @@ if __name__ == "__main__":
         t_base2g_arr,
         R_t2c_arr,
         t_t2c_arr,
-        method=cv2.CALIB_HAND_EYE_TSAI
+        method=cv2.CALIB_HAND_EYE_DANIILIDIS
     )
 
     T_cam2base_cv = np.eye(4)
