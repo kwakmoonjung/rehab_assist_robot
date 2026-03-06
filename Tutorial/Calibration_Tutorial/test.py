@@ -33,7 +33,7 @@ class TestNode(Node):
         rclpy.spin_once(self.img_node)
         time.sleep(1)
         self.intrinsics = self.img_node.get_camera_intrinsic()
-        self.gripper2cam = np.load("T_cam2base_try1.npy")
+        self.gripper2cam = np.load("T_cam2base_diff_check3.npy")
         # self.gripper2cam = np.load("T_cam2base.npy")
         self.JReady = posj([0, 0, 90, 0, 90, -90])
         self.gripper = RG(GRIPPER_NAME, TOOLCHARGER_IP, TOOLCHARGER_PORT)
