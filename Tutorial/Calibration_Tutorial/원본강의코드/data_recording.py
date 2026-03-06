@@ -8,7 +8,7 @@ import DR_init
 ROBOT_ID = "dsr01"
 ROBOT_MODEL = "m0609"
 VELOCITY, ACC = 60, 60
-DEVICE_NUMBER = 4
+DEVICE_NUMBER = 6
 
 DR_init.dsr__id = ROBOT_ID
 DR_init.__dsr__model = ROBOT_MODEL
@@ -43,8 +43,6 @@ def main(args=None):
     write_data["poses"] = []
     write_data["file_name"] = []
 
-    img_idx = 0  # [추가] 파일명 구분을 위한 인덱스 변수
-
     while True:
         ret, frame = cap.read()
 
@@ -55,10 +53,7 @@ def main(args=None):
 
         if cv2.waitKey(1) & 0xFF == ord("q"):
             pos = get_current_posx()[0]
-            # [수정] 파일명 중복 방지를 위해 앞단에 인덱스 번호 추가
-            file_name = f"{img_idx}_{pos[0]}_{pos[1]}_{pos[2]}.jpg"
-            img_idx += 1  # [추가] 저장 시마다 인덱스 1 증가
-
+            file_name = f"{pos[0]}_{pos[1]}_{pos[2]}.jpg"
             # 현재 위치 기반 이미지 저장
             cv2.imwrite(f"{source_path}/{file_name}", frame)
             print("current position1 : ", pos)

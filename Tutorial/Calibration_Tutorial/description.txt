@@ -1,0 +1,16 @@
+1. 캘리브레이션 결과 폴더
+T_cam2base_try1.npy 작은 체커보드로 고정 뎁스카메라 캘리브레이션 결과 -> 검증 결과 길이값은 정확하나 로봇 기준 좌표 자체가 이상함
+T_cam2base_try2.npy 작은 체커보드로 고정 뎁스카메라 캘리브레이션 결과 -> 검증 안함
+T_cam2base_try3.npy 작은 체커보드로 TCP 길이 늘려서 고정 뎁스카메라 캘리브레이션 결과 -> 검증 결과 값 이상함
+T_cam2base_diff_check.npy 큰 체커보드로 고정 뎁스카메라 캘리브레이션 결과 -> 검증 결과 로봇 기준 좌표계 이상함
+T_cam2base_diff_check2.npy ? 어떤 데이터로 돌린건지 모르겠음
+T_gripper2camera_diff_braket.npy 로봇팔에 달려있는 뎁스카메라 캘리브레이션 결과, 바뀐 브라켓 (강사님 제공)
+
+2. 실행 파일
+translatematrix.py -> 기존의 eye2hand_calibration.py 에서 구조 변경
+eye2hand_calibration_diff_check.py -> 큰 체커보드에 맞게 체커 사이즈 변경
+
+3. 원본강의코드 폴더: 기존 강의 코드
+
+4. 체커보드_데이터 폴더: 캘리브레이션할 때마다 생성된 data 폴더 백업
+

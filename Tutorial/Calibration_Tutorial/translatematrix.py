@@ -35,7 +35,7 @@ def find_checkerboard_pose(image, board_size, square_size, camera_matrix, dist_c
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    # [수정된 부분] 너무 엄격한 SB 대신 유연하고 범용적인 표준 함수로 변경
+    # 너무 엄격한 SB 대신 유연하고 범용적인 표준 함수로 변경
     ret, corners = cv2.findChessboardCorners(
         gray,
         board_size,
@@ -45,7 +45,7 @@ def find_checkerboard_pose(image, board_size, square_size, camera_matrix, dist_c
     if not ret or corners is None:
         return None, None, None
 
-    # [수정된 부분] 서브픽셀 단위로 정밀도 향상
+    # 서브픽셀 단위로 정밀도 향상
     corners_sub = cv2.cornerSubPix(
         gray,
         corners,
@@ -71,7 +71,8 @@ def find_checkerboard_pose(image, board_size, square_size, camera_matrix, dist_c
 # ===============================
 # 4. Camera intrinsic calibration
 # ===============================
-def calibrate_camera(image_paths, board_size, square_size):
+# [수정된 부분] 함수 파라미터에 저장 경로인 success_dir, fail_dir 추가
+def calibrate_camera(image_paths, board_size, square_size, success_dir, fail_dir):
     objp = create_checkerboard_object_points(board_size, square_size)
 
     obj_points = []
@@ -86,8 +87,11 @@ def calibrate_camera(image_paths, board_size, square_size):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         if image_shape is None:
             image_shape = gray.shape[::-1]
+            
+        # [추가된 부분] 파일 이름 추출 (디버그 저장용)
+        base_name = "intrinsic_" + os.path.basename(fname)
 
-        # [수정된 부분] SB 대신 유연한 표준 함수로 변경
+        # SB 대신 유연한 표준 함수로 변경
         ret, corners = cv2.findChessboardCorners(
             gray,
             board_size,
@@ -105,8 +109,14 @@ def calibrate_camera(image_paths, board_size, square_size):
             )
             obj_points.append(objp)
             img_points.append(corners_sub)
+            
+            # [추가된 부분] 에러로 종료되기 전에 성공한 이미지 즉시 저장
+            save_debug_image(img, os.path.join(success_dir, base_name), board_size, corners_sub, detected=True)
+        else:
+            # [추가된 부분] 에러로 종료되기 전에 실패한 이미지 즉시 저장 (눈으로 원인 파악 가능)
+            save_debug_image(img, os.path.join(fail_dir, base_name), detected=False)
 
-    # 이 곳에서 5장 이상 못 찾으면 에러를 띄우고 종료되어 버림 (디버그 폴더에 안 들어가는 원인)
+    # 이 곳에서 5장 이상 못 찾으면 에러를 띄우고 종료되어 버림
     if len(obj_points) < 5:
         raise RuntimeError(
             f"카메라 캘리브레이션용 체커보드 검출 성공 수가 너무 적음: {len(obj_points)}"
@@ -175,10 +185,13 @@ if __name__ == "__main__":
     os.makedirs(fail_dir, exist_ok=True)
 
     # 1) camera intrinsic
+    # [수정된 부분] 캘리브레이션 함수에 success_dir, fail_dir 넘겨주기
     camera_matrix, dist_coeffs, intrinsic_ok_count = calibrate_camera(
         image_paths,
         checkerboard_size,
-        square_size
+        square_size,
+        success_dir,
+        fail_dir
     )
 
     print(f"\n[INFO] intrinsic calibration usable images: {intrinsic_ok_count}")

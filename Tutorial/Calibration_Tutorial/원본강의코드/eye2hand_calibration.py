@@ -1,7 +1,7 @@
-import cv2
-import numpy as np
 import json
 from scipy.spatial.transform import Rotation
+import numpy as np
+import cv2
 
 # 1) 로봇 그리퍼의 절대 좌표 (x, y, z, rx, ry, rz)를 행렬로 변환하는 함수
 def get_robot_pose_matrix(x, y, z, rx, ry, rz):
@@ -13,7 +13,6 @@ def get_robot_pose_matrix(x, y, z, rx, ry, rz):
     T[:3, :3] = R
     T[:3, 3] = [x, y, z]
     return T
-
 
 # 2) 체커보드 코너 검출 (카메라→체커보드 변환 구하기)
 def find_checkerboard_pose(
@@ -61,7 +60,7 @@ def find_checkerboard_pose(
 
     return R, tvec
 
-
+# 체커보드 이미지를 이용한 카메라 보정
 def calibrate_camera_from_chessboard(
     image_folder_path,
     board_size,  # (7, 5)처럼 내부 코너 개수
@@ -131,20 +130,89 @@ def calibrate_camera_from_chessboard(
 
     return camera_matrix, dist_coeffs, rvecs, tvecs
 
+from scipy.linalg import sqrtm
+from numpy.linalg import inv
 
+# 4) 여러 개의 변환 행렬 조합 함수
+def compose_transformation_matrices(R_list, t_list):
+    T_list = []
+    for R, t in zip(R_list, t_list):
+        T = np.eye(4)
+        T[:3, :3] = R
+        T[:3, 3] = np.ravel(t)  # t가 벡터 형태여야 합니다.
+        T_list.append(T)
+    return T_list
+
+# 회전행렬을 로그변환하는 함수
+def logR(T):
+    R = T[0:3, 0:3]
+    theta = np.arccos((np.trace(R) - 1) / 2)
+    logr = np.array([
+        R[2, 1] - R[1, 2],
+        R[0, 2] - R[2, 0],
+        R[1, 0] - R[0, 1]
+    ]) * theta / (2 * np.sin(theta))
+    return logr
+
+# A와 B의 변환을 이용하여 보정 행렬 계산
+def Calibrate(A, B):
+    n_data = len(A)
+    M = np.zeros((3, 3))
+
+    for i in range(n_data - 1):
+        alpha  = logR(A[i])
+        beta   = logR(B[i])
+        alpha2 = logR(A[i + 1])
+        beta2  = logR(B[i + 1])
+        
+        alpha3 = np.cross(alpha, alpha2)
+        beta3  = np.cross(beta, beta2)
+        
+        M1 = np.dot(beta.reshape(3, 1), alpha.reshape(1, 3))
+        M2 = np.dot(beta2.reshape(3, 1), alpha2.reshape(1, 3))
+        M3 = np.dot(beta3.reshape(3, 1), alpha3.reshape(1, 3))
+        
+        M += M1 + M2 + M3
+
+    theta = np.dot(sqrtm(inv(np.dot(M.T, M))), M.T)
+
+    C = np.zeros((3 * n_data, 3))
+    d = np.zeros((3 * n_data, 1))
+    for i in range(n_data):
+        rot_a = A[i][:3, :3]
+        trans_a = A[i][:3, 3]
+        trans_b = B[i][:3, 3]
+        C[3 * i:3 * i + 3, :] = np.eye(3) - rot_a
+        d[3 * i:3 * i + 3, 0] = trans_a - np.dot(theta, trans_b)
+    
+    b_x = np.dot(inv(np.dot(C.T, C)), np.dot(C.T, d))
+    return theta, b_x
 
 # Main Function
 if __name__ == "__main__":
-    # 캘리브레이션 데이터 로드
     data = json.load(open("data/calibrate_data.json"))
     robot_poses = np.array(data["poses"])
 
     robot_poses[:, :3] = robot_poses[:, :3]
     image_paths = ["data/" + d for d in data["file_name"]]
 
+    valid_indices = []
+    for i, pose in enumerate(robot_poses):
+        T_base2gripper = get_robot_pose_matrix(*pose)
+        det_T = np.linalg.det(T_base2gripper)
+        print(f"Index {i}: det(T_base2gripper) = {det_T}")
+
+        if np.abs(det_T) > 1e-6:
+            valid_indices.append(i)
+        else:
+            print(f"⚠️ Warning: Singular T_base2gripper at index {i}!")
+
+    robot_poses = robot_poses[valid_indices]
+    image_paths = [image_paths[i] for i in valid_indices]
+
     checkerboard_size = (8, 6)  # 내부 코너 개수
     square_size = 25
-    # 카메라 캘리브레이션 수행(내부 파라미터 왜곡 보정)
+
     camera_matrix, dist_coeffs, rvecs, tvecs = calibrate_camera_from_chessboard(
         image_paths, checkerboard_size, square_size
     )
@@ -172,8 +240,7 @@ if __name__ == "__main__":
         if R_cam2checker is None:
             continue
 
-        # T_gripper2base= np.linalg.inv(T_base2gripper)
-        T_gripper2base= T_base2gripper
+        T_gripper2base= np.linalg.inv(T_base2gripper)
 
         R_gripper2base = T_gripper2base[:3, :3]
         t_gripper2base = T_gripper2base[:3, 3]
@@ -184,44 +251,33 @@ if __name__ == "__main__":
         T_cam2checker = np.eye(4)
         T_cam2checker[:3, :3] = R_cam2checker
         T_cam2checker[:3, 3] = t_cam2checker.flatten()
-        
-        T_checker2cam = T_cam2checker
+        T_checker2cam = np.linalg.inv(T_cam2checker)
 
         R_checker2camera_list.append(T_checker2cam[:3, :3].copy())
         t_checker2camera_list.append(T_checker2cam[:3, 3].copy())
 
+    T_gripper2base_list = compose_transformation_matrices(R_gripper2base_list, t_gripper2base_list)
+    T_checker2cam_list = compose_transformation_matrices(R_checker2camera_list, t_checker2camera_list)
+    A_list = []
+    B_list = []
+    num_pairs = min(len(T_gripper2base_list), len(T_checker2cam_list))
 
-    # Hand-Eye 캘리브레이션 수행
-    R_cam2gripper, t_cam2gripper = cv2.calibrateHandEye(
-        R_gripper2base_list,
-        t_gripper2base_list,
-        R_checker2camera_list,
-        t_checker2camera_list,
-        method=cv2.CALIB_HAND_EYE_PARK,
-    )
+    for i, T in enumerate(T_gripper2base_list):
+        det = np.linalg.det(T)
+        if np.abs(det) < 1e-6:
+            print(f"⚠️ Warning: T_gripper2base_list[{i}] is singular or nearly singular!")
 
+    for i in range(num_pairs - 1):
+        A_i = np.dot(inv(T_gripper2base_list[i]), T_gripper2base_list[i + 1])
+        B_i = np.dot(inv(T_checker2cam_list[i]), T_checker2cam_list[i + 1])
+        A_list.append(A_i)
+        B_list.append(B_i)
 
-    T_base2gripper_example = get_robot_pose_matrix(*robot_poses[2])
-    R_base2gripper_example = T_base2gripper_example[:3, :3]
-    t_base2gripper_example = T_base2gripper_example[:3, 3]
-
-    # 그리퍼->카메라 변환행렬
-    T_gripper2cam = np.eye(4)
-    T_gripper2cam[:3, :3] = R_cam2gripper
-    T_gripper2cam[:3, 3] = t_cam2gripper.flatten()
-
-    # 최종 베이스->카메라
-    T_base2cam = T_base2gripper_example @ T_gripper2cam
-
-    print("===== Hand-Eye Calibration Results =====")
-    print("R_base2gripper:\n", T_base2gripper_example[:3, :3])
-    print("T_base2gripper:\n", T_base2gripper_example[:3, 3])
-    print("\n")
-    print("R_base2camera:\n", T_base2cam[:3, :3])
-    print("T_base2camera:\n", T_base2cam[:3, 3])
-    print("\n")
-    print("R_gripper2camera:\n", T_gripper2cam[:3, :3])
-    print("T_gripper2camera:\n", T_gripper2cam[:3, 3].tolist())
-
-    # save T_grigper2camera
-    np.save("T_gripper2camera.npy", T_gripper2cam)
+    theta, b_x = Calibrate(A_list, B_list)
+    X = np.eye(4)
+    X[:3, :3] = theta
+    X[:3, 3] = b_x.flatten()
+    T_cam2base = X
+    print(T_cam2base)
+    print(T_cam2base[:3, 3])
+    np.save("T_cam2base.npy", T_cam2base)
