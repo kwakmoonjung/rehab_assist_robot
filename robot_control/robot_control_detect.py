@@ -21,6 +21,7 @@ TOOLCHARGER_PORT = "502"
 DEPTH_OFFSET = 100.0 
 Y_OFFSET = 30.0       
 MIN_DEPTH = 50.0
+LIFT_OFFSET = 50.0  # [추가] 들어올릴 Z축 높이 (50mm)
 
 DR_init.__dsr__id = ROBOT_ID
 DR_init.__dsr__model = ROBOT_MODEL
@@ -108,11 +109,27 @@ class RobotController(Node):
             target_pos = list(td_coord[:3]) + robot_posx[3:]
 
             self.get_logger().info(f"📍 로봇 이동 시작: X={target_pos[0]:.1f}, Y={target_pos[1]:.1f}, Z={target_pos[2]:.1f}")
-            
             movel(target_pos, vel=VELOCITY, acc=ACC)
             mwait() 
-            
             self.get_logger().info("✅ 목표 위치 도착 완료!")
+
+            # 2. 그리퍼 닫기 (사람 손목이므로 힘을 100으로 낮춰서 잡음)
+            # self.get_logger().info("✊ 손목 파지 (그리퍼 닫기)")
+            # gripper.close_gripper(force_val=100)
+            # time.sleep(1.5)  # 그리퍼가 완전히 닫힐 때까지 대기
+            
+            # # 3. Z축으로 살짝 들어올리기 (Lift)
+            # target_pos_up = list(target_pos)
+            # target_pos_up[2] += LIFT_OFFSET
+            
+            # self.get_logger().info(f"⬆️ Z축으로 {LIFT_OFFSET}mm 들어올리기 시작")
+            # movel(target_pos_up, vel=VELOCITY, acc=ACC)
+            # mwait()
+            # self.get_logger().info("✅ 자세 교정(Z축 이동) 완료!")
+
+            # 필요시 일정 시간 유지 후 그리퍼를 다시 여는 로직 추가 가능
+            # time.sleep(2)
+            # gripper.open_gripper()
         
         except Exception as e:
             self.get_logger().error(f"이동 중 에러 발생: {e}")
@@ -130,6 +147,7 @@ class RobotController(Node):
         mwait()
 
 def main(args=None):
+
     node = RobotController()
     rclpy.spin(node) # 콜백 대기만 수행하는 깔끔한 구조
     rclpy.shutdown()
