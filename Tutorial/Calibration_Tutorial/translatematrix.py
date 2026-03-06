@@ -4,12 +4,14 @@ import cv2
 from numpy.linalg import inv
 
 # ===============================
-# Robot pose → matrix
+# 1. Robot pose → Transformation
 # ===============================
 
 def get_robot_pose_matrix(x, y, z, rx, ry, rz):
 
+    # deg → rad
     rvec = np.deg2rad([rx, ry, rz])
+
     R, _ = cv2.Rodrigues(rvec)
 
     T = np.eye(4)
@@ -20,7 +22,7 @@ def get_robot_pose_matrix(x, y, z, rx, ry, rz):
 
 
 # ===============================
-# checkerboard detection
+# 2. Checkerboard detection
 # ===============================
 
 def find_checkerboard_pose(image, board_size, square_size, camera_matrix, dist_coeffs):
@@ -35,7 +37,7 @@ def find_checkerboard_pose(image, board_size, square_size, camera_matrix, dist_c
     ret, corners = cv2.findChessboardCorners(gray, board_size)
 
     if not ret:
-        return None,None
+        return None, None
 
     corners_sub = cv2.cornerSubPix(
         gray,
@@ -43,7 +45,7 @@ def find_checkerboard_pose(image, board_size, square_size, camera_matrix, dist_c
         (11,11),
         (-1,-1),
         (
-            cv2.TERM_CRITERIA_EPS+
+            cv2.TERM_CRITERIA_EPS +
             cv2.TERM_CRITERIA_MAX_ITER,
             30,
             0.001
@@ -58,15 +60,15 @@ def find_checkerboard_pose(image, board_size, square_size, camera_matrix, dist_c
     )
 
     if not ret:
-        return None,None
+        return None, None
 
     R,_ = cv2.Rodrigues(rvec)
 
-    return R,tvec
+    return R, tvec
 
 
 # ===============================
-# camera intrinsic calibration
+# 3. Camera intrinsic calibration
 # ===============================
 
 def calibrate_camera(image_paths, board_size, square_size):
@@ -86,22 +88,22 @@ def calibrate_camera(image_paths, board_size, square_size):
         if img is None:
             continue
 
-        gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
         if image_shape is None:
             image_shape = gray.shape[::-1]
 
-        ret,corners = cv2.findChessboardCorners(gray,board_size)
+        ret, corners = cv2.findChessboardCorners(gray, board_size)
 
         if ret:
 
-            corners_sub=cv2.cornerSubPix(
+            corners_sub = cv2.cornerSubPix(
                 gray,
                 corners,
                 (11,11),
                 (-1,-1),
                 (
-                    cv2.TERM_CRITERIA_EPS+
+                    cv2.TERM_CRITERIA_EPS +
                     cv2.TERM_CRITERIA_MAX_ITER,
                     30,
                     0.001
@@ -111,7 +113,7 @@ def calibrate_camera(image_paths, board_size, square_size):
             obj_points.append(objp)
             img_points.append(corners_sub)
 
-    ret,camera_matrix,dist_coeffs,_,_ = cv2.calibrateCamera(
+    ret, camera_matrix, dist_coeffs, _, _ = cv2.calibrateCamera(
         obj_points,
         img_points,
         image_shape,
@@ -119,7 +121,7 @@ def calibrate_camera(image_paths, board_size, square_size):
         None
     )
 
-    return camera_matrix,dist_coeffs
+    return camera_matrix, dist_coeffs
 
 
 # ===============================
@@ -131,13 +133,13 @@ if __name__ == "__main__":
     data = json.load(open("data/calibrate_data.json"))
 
     robot_poses = np.array(data["poses"])
-    image_paths = ["data/"+d for d in data["file_name"]]
+    image_paths = ["data/" + d for d in data["file_name"]]
 
     checkerboard_size = (10,7)
     square_size = 25
 
 
-    # camera intrinsic
+    # camera intrinsic calibration
     camera_matrix, dist_coeffs = calibrate_camera(
         image_paths,
         checkerboard_size,
@@ -192,12 +194,17 @@ if __name__ == "__main__":
     )
 
 
+    # Transformation matrix
     T_cam2base = np.eye(4)
+
     T_cam2base[:3,:3] = R_cam2base
-    T_cam2base[:3,3] = t_cam2base
+    T_cam2base[:3,3] = t_cam2base.flatten()
 
 
-    print("Camera → Base Transform")
+    print("\nCamera → Robot Base Transform\n")
     print(T_cam2base)
+
+    print("\nRotation determinant:", np.linalg.det(R_cam2base))
+
 
     np.save("T_cam2base.npy", T_cam2base)
