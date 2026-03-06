@@ -93,6 +93,7 @@ def calibrate_camera(image_paths, board_size, square_size):
             obj_points.append(objp)
             img_points.append(corners_refined)
 
+    # 이 곳에서 5장 이상 못 찾으면 에러를 띄우고 종료되어 버림 (디버그 폴더에 안 들어가는 원인)
     if len(obj_points) < 5:
         raise RuntimeError(
             f"카메라 캘리브레이션용 체커보드 검출 성공 수가 너무 적음: {len(obj_points)}"
