@@ -35,18 +35,28 @@ def find_checkerboard_pose(image, board_size, square_size, camera_matrix, dist_c
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    ret, corners = cv2.findChessboardCornersSB(
+    # [수정된 부분] 너무 엄격한 SB 대신 유연하고 범용적인 표준 함수로 변경
+    ret, corners = cv2.findChessboardCorners(
         gray,
         board_size,
-        flags=cv2.CALIB_CB_NORMALIZE_IMAGE | cv2.CALIB_CB_EXHAUSTIVE
+        flags=cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_FAST_CHECK + cv2.CALIB_CB_NORMALIZE_IMAGE
     )
 
     if not ret or corners is None:
         return None, None, None
 
+    # [수정된 부분] 서브픽셀 단위로 정밀도 향상
+    corners_sub = cv2.cornerSubPix(
+        gray,
+        corners,
+        (11, 11),
+        (-1, -1),
+        (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+    )
+
     ok, rvec, tvec = cv2.solvePnP(
         objp,
-        corners,
+        corners_sub,
         camera_matrix,
         dist_coeffs
     )
@@ -55,7 +65,7 @@ def find_checkerboard_pose(image, board_size, square_size, camera_matrix, dist_c
         return None, None, None
 
     R, _ = cv2.Rodrigues(rvec)
-    return R, tvec, corners
+    return R, tvec, corners_sub
 
 
 # ===============================
@@ -77,16 +87,26 @@ def calibrate_camera(image_paths, board_size, square_size):
         if image_shape is None:
             image_shape = gray.shape[::-1]
 
-        ret, corners = cv2.findChessboardCornersSB(
+        # [수정된 부분] SB 대신 유연한 표준 함수로 변경
+        ret, corners = cv2.findChessboardCorners(
             gray,
             board_size,
-            flags=cv2.CALIB_CB_NORMALIZE_IMAGE | cv2.CALIB_CB_EXHAUSTIVE
+            flags=cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_FAST_CHECK + cv2.CALIB_CB_NORMALIZE_IMAGE
         )
 
         if ret and corners is not None:
+            # 서브픽셀 정밀도 적용
+            corners_sub = cv2.cornerSubPix(
+                gray,
+                corners,
+                (11, 11),
+                (-1, -1),
+                (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+            )
             obj_points.append(objp)
-            img_points.append(corners)
+            img_points.append(corners_sub)
 
+    # 이 곳에서 5장 이상 못 찾으면 에러를 띄우고 종료되어 버림 (디버그 폴더에 안 들어가는 원인)
     if len(obj_points) < 5:
         raise RuntimeError(
             f"카메라 캘리브레이션용 체커보드 검출 성공 수가 너무 적음: {len(obj_points)}"
