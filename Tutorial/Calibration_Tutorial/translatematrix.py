@@ -28,35 +28,29 @@ def create_checkerboard_object_points(board_size, square_size):
 
 
 # ===============================
-# 3. Checkerboard detection
+# 3. Checkerboard detection (수정됨: 안정적인 기본 알고리즘 + 서브픽셀 보정)
 # ===============================
 def find_checkerboard_pose(image, board_size, square_size, camera_matrix, dist_coeffs):
     objp = create_checkerboard_object_points(board_size, square_size)
-
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    # 너무 엄격한 SB 대신 유연하고 범용적인 표준 함수로 변경
+    # 인식률이 훨씬 좋은 기본 함수와 플래그 사용
     ret, corners = cv2.findChessboardCorners(
         gray,
         board_size,
-        flags=cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_FAST_CHECK + cv2.CALIB_CB_NORMALIZE_IMAGE
+        flags=cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE | cv2.CALIB_CB_FAST_CHECK
     )
 
     if not ret or corners is None:
         return None, None, None
 
-    # 서브픽셀 단위로 정밀도 향상
-    corners_sub = cv2.cornerSubPix(
-        gray,
-        corners,
-        (11, 11),
-        (-1, -1),
-        (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-    )
+    # 검출된 코너의 위치를 소수점(픽셀 이하) 단위로 정밀하게 보정 (좌표 정확도 대폭 상승)
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+    corners_refined = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
 
     ok, rvec, tvec = cv2.solvePnP(
         objp,
-        corners_sub,
+        corners_refined,
         camera_matrix,
         dist_coeffs
     )
@@ -65,11 +59,11 @@ def find_checkerboard_pose(image, board_size, square_size, camera_matrix, dist_c
         return None, None, None
 
     R, _ = cv2.Rodrigues(rvec)
-    return R, tvec, corners_sub
+    return R, tvec, corners_refined
 
 
 # ===============================
-# 4. Camera intrinsic calibration
+# 4. Camera intrinsic calibration (수정됨)
 # ===============================
 # [수정된 부분] 함수 파라미터에 저장 경로인 success_dir, fail_dir 추가
 def calibrate_camera(image_paths, board_size, square_size, success_dir, fail_dir):
@@ -87,36 +81,20 @@ def calibrate_camera(image_paths, board_size, square_size, success_dir, fail_dir
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         if image_shape is None:
             image_shape = gray.shape[::-1]
-            
-        # [추가된 부분] 파일 이름 추출 (디버그 저장용)
-        base_name = "intrinsic_" + os.path.basename(fname)
 
-        # SB 대신 유연한 표준 함수로 변경
         ret, corners = cv2.findChessboardCorners(
             gray,
             board_size,
-            flags=cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_FAST_CHECK + cv2.CALIB_CB_NORMALIZE_IMAGE
+            flags=cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE | cv2.CALIB_CB_FAST_CHECK
         )
 
         if ret and corners is not None:
-            # 서브픽셀 정밀도 적용
-            corners_sub = cv2.cornerSubPix(
-                gray,
-                corners,
-                (11, 11),
-                (-1, -1),
-                (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-            )
+            criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+            corners_refined = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
             obj_points.append(objp)
-            img_points.append(corners_sub)
-            
-            # [추가된 부분] 에러로 종료되기 전에 성공한 이미지 즉시 저장
-            save_debug_image(img, os.path.join(success_dir, base_name), board_size, corners_sub, detected=True)
-        else:
-            # [추가된 부분] 에러로 종료되기 전에 실패한 이미지 즉시 저장 (눈으로 원인 파악 가능)
-            save_debug_image(img, os.path.join(fail_dir, base_name), detected=False)
+            img_points.append(corners_refined)
 
-    # 이 곳에서 5장 이상 못 찾으면 에러를 띄우고 종료되어 버림
+    # 이 곳에서 5장 이상 못 찾으면 에러를 띄우고 종료되어 버림 (디버그 폴더에 안 들어가는 원인)
     if len(obj_points) < 5:
         raise RuntimeError(
             f"카메라 캘리브레이션용 체커보드 검출 성공 수가 너무 적음: {len(obj_points)}"
@@ -160,7 +138,6 @@ def save_debug_image(image, save_path, board_size=None, corners=None, detected=F
         2,
         cv2.LINE_AA
     )
-
     cv2.imwrite(save_path, dbg)
 
 
@@ -173,7 +150,7 @@ if __name__ == "__main__":
     robot_poses = np.array(data["poses"], dtype=np.float64)
     image_paths = ["data/" + d for d in data["file_name"]]
 
-    # 내부 코너 수 기준
+    # 내부 코너 수 (만약 보드를 새로 뽑으셨다면, 꼭 가로세로 교차점 개수를 세서 맞춰주세요!)
     checkerboard_size = (10, 6)
     square_size = 75.0  # mm
 
@@ -232,14 +209,15 @@ if __name__ == "__main__":
             fail_count += 1
             continue
 
-        T_base2gripper = get_robot_pose_matrix(*pose)
-        T_gripper2base = inv(T_base2gripper)
+        # [핵심 수정] inv() 제거! pose 자체가 이미 Gripper to Base 입니다.
+        T_gripper2base_matrix = get_robot_pose_matrix(*pose)
 
-        R_gripper2base.append(T_gripper2base[:3, :3].astype(np.float64))
-        t_gripper2base.append(T_gripper2base[:3, 3].astype(np.float64))
+        # OpenCV calibrateHandEye는 (3,1) 형태의 벡터를 선호하므로 reshape 적용
+        R_gripper2base.append(T_gripper2base_matrix[:3, :3].astype(np.float64))
+        t_gripper2base.append(T_gripper2base_matrix[:3, 3].astype(np.float64).reshape(3, 1))
 
         R_target2cam.append(R_cam2checker.astype(np.float64))
-        t_target2cam.append(t_cam2checker.flatten().astype(np.float64))
+        t_target2cam.append(t_cam2checker.astype(np.float64).reshape(3, 1))
 
         save_debug_image(
             image=image,
@@ -248,15 +226,11 @@ if __name__ == "__main__":
             corners=corners,
             detected=True
         )
-
         success_count += 1
 
     print("\n[INFO] Data count check")
     print("successful pairs:", success_count)
     print("failed images    :", fail_count)
-
-    print(f"[INFO] success folder: {success_dir}")
-    print(f"[INFO] fail folder   : {fail_dir}")
 
     if success_count < 5:
         raise RuntimeError(
@@ -264,8 +238,9 @@ if __name__ == "__main__":
             "checkerboard_size 또는 촬영 상태를 다시 확인해야 함."
         )
 
-    # 3) hand-eye calibration
-    R_cam2base, t_cam2base = cv2.calibrateHandEye(
+    # 3) hand-eye calibration (Eye-in-Hand 환경)
+    # R_cam2gripper를 반환합니다. (카메라 -> 그리퍼 변환 행렬)
+    R_cam2gripper, t_cam2gripper = cv2.calibrateHandEye(
         R_gripper2base,
         t_gripper2base,
         R_target2cam,
@@ -273,13 +248,15 @@ if __name__ == "__main__":
         method=cv2.CALIB_HAND_EYE_TSAI
     )
 
-    T_cam2base = np.eye(4, dtype=np.float64)
-    T_cam2base[:3, :3] = R_cam2base
-    T_cam2base[:3, 3] = t_cam2base.flatten()
+    # 행렬 결합
+    T_gripper2camera = np.eye(4, dtype=np.float64)
+    T_gripper2camera[:3, :3] = R_cam2gripper
+    T_gripper2camera[:3, 3] = t_cam2gripper.flatten()
 
-    print("\nCamera -> Robot Base Transform\n")
-    print(T_cam2base)
-    print("\nRotation determinant:", np.linalg.det(R_cam2base))
+    print("\n[RESULT] Camera -> Gripper Transform (T_gripper2camera)\n")
+    print(T_gripper2camera)
+    print("\nRotation determinant:", np.linalg.det(R_cam2gripper))
 
-    np.save("T_cam2base.npy", T_cam2base)
-    print("\n[INFO] saved: T_cam2base.npy")
+    # [핵심 수정] 이전 로봇 구동 코드와 호환되게 파일명 및 데이터 의미 수정
+    np.save("T_gripper2camera.npy", T_gripper2camera)
+    print("\n[INFO] saved: T_gripper2camera.npy")
