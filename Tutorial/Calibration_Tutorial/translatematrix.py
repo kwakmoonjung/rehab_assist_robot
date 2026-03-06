@@ -4,14 +4,12 @@ import cv2
 from numpy.linalg import inv
 
 # ===============================
-# 1. Robot pose → Transformation
+# Robot pose → Transformation
 # ===============================
 
 def get_robot_pose_matrix(x, y, z, rx, ry, rz):
 
-    # deg → rad
     rvec = np.deg2rad([rx, ry, rz])
-
     R, _ = cv2.Rodrigues(rvec)
 
     T = np.eye(4)
@@ -22,7 +20,7 @@ def get_robot_pose_matrix(x, y, z, rx, ry, rz):
 
 
 # ===============================
-# 2. Checkerboard detection
+# Checkerboard detection
 # ===============================
 
 def find_checkerboard_pose(image, board_size, square_size, camera_matrix, dist_coeffs):
@@ -68,7 +66,7 @@ def find_checkerboard_pose(image, board_size, square_size, camera_matrix, dist_c
 
 
 # ===============================
-# 3. Camera intrinsic calibration
+# Camera intrinsic calibration
 # ===============================
 
 def calibrate_camera(image_paths, board_size, square_size):
@@ -135,11 +133,11 @@ if __name__ == "__main__":
     robot_poses = np.array(data["poses"])
     image_paths = ["data/" + d for d in data["file_name"]]
 
-    checkerboard_size = (10,7)
-    square_size = 25
+    checkerboard_size = (10,6)
+    square_size = 75
 
 
-    # camera intrinsic calibration
+    # Camera intrinsic
     camera_matrix, dist_coeffs = calibrate_camera(
         image_paths,
         checkerboard_size,
@@ -156,14 +154,6 @@ if __name__ == "__main__":
 
     for img_path, pose in zip(image_paths, robot_poses):
 
-        T_base2gripper = get_robot_pose_matrix(*pose)
-
-        T_gripper2base = inv(T_base2gripper)
-
-        R_gripper2base.append(T_gripper2base[:3,:3])
-        t_gripper2base.append(T_gripper2base[:3,3])
-
-
         image = cv2.imread(img_path)
 
         R_cam2checker, t_cam2checker = find_checkerboard_pose(
@@ -175,10 +165,32 @@ if __name__ == "__main__":
         )
 
         if R_cam2checker is None:
+            print("checkerboard detection failed:", img_path)
             continue
+
+
+        T_base2gripper = get_robot_pose_matrix(*pose)
+        T_gripper2base = inv(T_base2gripper)
+
+        R_gripper2base.append(T_gripper2base[:3,:3])
+        t_gripper2base.append(T_gripper2base[:3,3])
 
         R_target2cam.append(R_cam2checker)
         t_target2cam.append(t_cam2checker.flatten())
+
+
+    # ===============================
+    # DEBUG CHECK
+    # ===============================
+
+    print("\nData count check")
+    print("robot poses:", len(R_gripper2base))
+    print("checkerboard poses:", len(R_target2cam))
+
+
+    if len(R_gripper2base) < 5:
+        print("\nERROR: Not enough calibration data")
+        exit()
 
 
     # ===============================
@@ -194,7 +206,6 @@ if __name__ == "__main__":
     )
 
 
-    # Transformation matrix
     T_cam2base = np.eye(4)
 
     T_cam2base[:3,:3] = R_cam2base
