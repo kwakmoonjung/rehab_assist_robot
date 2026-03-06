@@ -122,8 +122,10 @@ class RobotController(Node):
 
     def init_robot(self):
         JReady = [0, 0, 90, 0, 90, 0]
-        #movej(JReady, vel=VELOCITY, acc=ACC)
-        init_pos = get_current_posj()[0]
+        movej(JReady, vel=VELOCITY, acc=ACC)
+
+        init_pos = [73.03, 71.08, -33.55, 23.68, -123.47, -74.72]
+        movej(init_pos, vel=VELOCITY, acc=ACC)
         print(f'init pos: {init_pos}')
         gripper.open_gripper()
         mwait()
