@@ -120,7 +120,11 @@ class RobotController(Node):
             self.is_moving = False # 이동 완료 후 플래그 해제
 
     def init_robot(self):
-        init_pos = get_current_posj()[0]
+        JReady = [0, 0, 90, 0, 90, 0]
+        movej(JReady, vel=VELOCITY, acc=ACC)
+
+        init_pos = [73.03, 71.08, -33.55, 23.68, -123.47, -74.72]
+        movej(init_pos, vel=VELOCITY, acc=ACC)
         print(f'init pos: {init_pos}')
         gripper.open_gripper()
         mwait()
