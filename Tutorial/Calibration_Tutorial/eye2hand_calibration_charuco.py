@@ -2,10 +2,10 @@ import json
 from scipy.spatial.transform import Rotation
 import numpy as np
 import cv2
+from scipy.linalg import sqrtm
+from numpy.linalg import inv
 
-# ==========================================
-# 1) 로봇 그리퍼 변환 (기존 완벽 유지)
-# ==========================================
+# 1) 로봇 그리퍼의 절대 좌표를 행렬로 변환
 def get_robot_pose_matrix(x, y, z, rx, ry, rz):
     R = Rotation.from_euler('ZYZ', [rx, ry, rz], degrees=True).as_matrix()
     T = np.eye(4)
@@ -13,25 +13,19 @@ def get_robot_pose_matrix(x, y, z, rx, ry, rz):
     T[:3, 3] = [x, y, z]
     return T
 
-# ==========================================
-# 2) ChArUco 보드 포즈 검출 (업그레이드)
-# ==========================================
-def find_charuco_pose(image, board, camera_matrix, dist_coeffs):
-    """
-    ChArUco 보드를 검출하고 solvePnP를 통해 변환(R, t)을 구함.
-    일부만 보여도 강건하게 인식 가능.
-    """
+# 2) ChArUco 보드 포즈 검출
+def find_charuco_pose(image, board, aruco_dict, camera_matrix, dist_coeffs):
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     
-    # 1. 아루코 마커 찾기
-    corners, ids, rejectedImgPoints = cv2.aruco.detectMarkers(gray, board.dictionary)
+    # 아루코 마커 검출 (구버전 API 완벽 호환)
+    corners, ids, rejectedImgPoints = cv2.aruco.detectMarkers(gray, aruco_dict)
     
     if ids is not None and len(ids) > 0:
-        # 2. 체커보드 코너 보간 (Interpolation)
+        # 체커보드 코너 보간
         ret, charuco_corners, charuco_ids = cv2.aruco.interpolateCornersCharuco(
             corners, ids, gray, board)
         
-        # 3. 최소 4개 이상의 코너가 보여야 3D 포즈 추정 가능
+        # 최소 4개 이상의 코너가 보여야 3D 포즈 추정 가능
         if charuco_corners is not None and charuco_ids is not None and len(charuco_corners) >= 4:
             valid, rvec, tvec = cv2.aruco.estimatePoseCharucoBoard(
                 charuco_corners, charuco_ids, board, camera_matrix, dist_coeffs, np.empty(1), np.empty(1))
@@ -42,10 +36,8 @@ def find_charuco_pose(image, board, camera_matrix, dist_coeffs):
                 
     return None, None
 
-# ==========================================
-# 3) ChArUco 이미지를 이용한 카메라 보정 (업그레이드)
-# ==========================================
-def calibrate_camera_from_charuco(image_paths, board):
+# 3) ChArUco 이미지를 이용한 카메라 보정 (Intrinsic)
+def calibrate_camera_from_charuco(image_paths, board, aruco_dict):
     all_corners = []
     all_ids = []
     image_shape = None
@@ -59,7 +51,7 @@ def calibrate_camera_from_charuco(image_paths, board):
         if image_shape is None:
             image_shape = gray.shape[::-1]
 
-        corners, ids, _ = cv2.aruco.detectMarkers(gray, board.dictionary)
+        corners, ids, _ = cv2.aruco.detectMarkers(gray, aruco_dict)
         
         if ids is not None and len(ids) > 0:
             ret, charuco_corners, charuco_ids = cv2.aruco.interpolateCornersCharuco(
@@ -73,7 +65,6 @@ def calibrate_camera_from_charuco(image_paths, board):
         print("ChArUco 보드 코너를 충분히 찾지 못하였습니다.")
         return None, None, None, None
 
-    # ChArUco 전용 카메라 캘리브레이션 함수
     ret, camera_matrix, dist_coeffs, rvecs, tvecs = cv2.aruco.calibrateCameraCharuco(
         all_corners, all_ids, board, image_shape, None, None)
 
@@ -83,12 +74,7 @@ def calibrate_camera_from_charuco(image_paths, board):
 
     return camera_matrix, dist_coeffs, rvecs, tvecs
 
-# ==========================================
-# 4) 행렬 연산 및 Park & Martin 수식 (기존 완벽 유지)
-# ==========================================
-from scipy.linalg import sqrtm
-from numpy.linalg import inv
-
+# 4) 행렬 연산 및 Park & Martin 수학 로직
 def compose_transformation_matrices(R_list, t_list):
     T_list = []
     for R, t in zip(R_list, t_list):
@@ -142,7 +128,7 @@ def Calibrate(A, B):
     return theta, b_x
 
 # ==========================================
-# Main Function
+# Main 실행부
 # ==========================================
 if __name__ == "__main__":
     data = json.load(open("data/calibrate_data.json"))
@@ -158,35 +144,37 @@ if __name__ == "__main__":
         
         if np.abs(det_T) > 1e-6:
             valid_indices.append(i)
-        else:
-            print(f"⚠️ Warning: Singular T_base2gripper at index {i}!")
 
     robot_poses = robot_poses[valid_indices]
     image_paths = [image_paths[i] for i in valid_indices]
 
     # ---------------------------------------------------------
-    # [중요] ChArUco 보드 스펙 정의 (연구원님의 보드에 맞게 수정 필수!)
+    # [수정 필수] 출력된 보드를 자로 직접 재서 아래 숫자를 바꿔주세요.
     # ---------------------------------------------------------
     squaresX = 6
     squaresY = 4
-    square_size = 30.0  # (예시) 실제 자로 잰 흑백 네모 1칸의 길이 (mm)
-    marker_size = 22.0  # (예시) 실제 자로 잰 내부 마커 1칸의 길이 (mm)
+    square_size = 30.0  # (예: 30mm) 흑백 네모 1칸의 실제 길이
+    marker_size = 22.0  # (예: 22mm) 내부 ArUco 마커 1칸의 실제 길이
     
-    # 사용한 아루코 딕셔너리 (일반적으로 DICT_6X6_250 등을 가장 많이 씁니다)
-    aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
-    
-    # OpenCV 4.6 이하 버전 호환용 보드 생성 (ROS Noetic 환경 등에서 안정적)
+    # 4.6 이하 버전 완벽 호환 딕셔너리 생성 명령어
+    try:
+        aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_6X6_250)
+    except AttributeError:
+        # 혹시나 최신 버전일 경우를 대비한 안전장치
+        aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
+        
     board = cv2.aruco.CharucoBoard_create(squaresX, squaresY, square_size, marker_size, aruco_dict)
     # ---------------------------------------------------------
 
-    # 1. 카메라 인트린직(내부 파라미터) 캘리브레이션
+    print("카메라 내부 파라미터 캘리브레이션 시작...")
     camera_matrix, dist_coeffs, rvecs, tvecs = calibrate_camera_from_charuco(
-        image_paths, board
+        image_paths, board, aruco_dict
     )
 
     if camera_matrix is None:
-        print("카메라 캘리브레이션 실패로 프로그램을 종료합니다.")
+        print("종료합니다.")
         exit()
+    print("성공!\n")
 
     R_gripper2base_list = []
     t_gripper2base_list = []
@@ -197,20 +185,17 @@ if __name__ == "__main__":
 
     for img_path, pose in zip(image_paths, robot_poses):
         T_base2gripper = get_robot_pose_matrix(*pose)
-
         image = cv2.imread(img_path)
         if image is None:
             continue
 
-        # 2. ChArUco 보드를 이용해 카메라-보드 간 포즈 추출
         R_cam2checker, t_cam2checker = find_charuco_pose(
-            image, board, camera_matrix, dist_coeffs
+            image, board, aruco_dict, camera_matrix, dist_coeffs
         )
         if R_cam2checker is None:
             continue
 
-        T_gripper2base= np.linalg.inv(T_base2gripper)
-
+        T_gripper2base = np.linalg.inv(T_base2gripper)
         R_gripper2base = T_gripper2base[:3, :3]
         t_gripper2base = T_gripper2base[:3, 3]
 
@@ -238,14 +223,16 @@ if __name__ == "__main__":
         A_list.append(A_i)
         B_list.append(B_i)
 
-    # 3. Park & Martin 직접 구현 알고리즘으로 최종 연산
+    # 최종 연산
     theta, b_x = Calibrate(A_list, B_list)
-    X = np.eye(4)
-    X[:3, :3] = theta
-    X[:3, 3] = b_x.flatten()
-    T_cam2base = X
+    T_cam2base = np.eye(4)
+    T_cam2base[:3, :3] = theta
+    T_cam2base[:3, 3] = b_x.flatten()
     
-    print("\n[ChArUco 기반 캘리브레이션 최종 결과 (Park & Martin)]")
+    print("=======================================")
+    print("[최종 캘리브레이션 결과 행렬 (T_cam2base)]")
+    print("=======================================")
     print(T_cam2base)
-    print("병진 벡터 (X, Y, Z mm):", T_cam2base[:3, 3])
+    print("\n[위치 오프셋 (X, Y, Z mm)]")
+    print(T_cam2base[:3, 3])
     np.save("T_cam2base.npy", T_cam2base)
