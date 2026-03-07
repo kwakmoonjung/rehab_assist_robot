@@ -14,6 +14,21 @@ def get_robot_pose_matrix(x, y, z, rx, ry, rz):
     T[:3, 3] = [x, y, z]
     return T
 
+# [추가] calib.io 보드의 ID를 OpenCV가 기대하는 ID 위치로 변환하는 함수
+def convert_calib_id_to_opencv(calib_ids):
+    if calib_ids is None:
+        return None
+    opencv_ids = np.copy(calib_ids)
+    for i in range(len(calib_ids)):
+        c_id = calib_ids[i][0]
+        # 8x11 보드 기준 한 줄에 4개의 마커 (총 11줄)
+        row = c_id // 4
+        col = c_id % 4
+        # calib.io는 위에서 아래로, OpenCV는 아래에서 위로 번호를 매기므로 행 순서를 뒤집음 (11줄이므로 최대 인덱스 10)
+        opencv_row = 10 - row
+        opencv_ids[i][0] = opencv_row * 4 + col
+    return opencv_ids
+
 # 2) ChArUco 보드 포즈 검출
 def find_charuco_pose(image, board, aruco_dict, camera_matrix, dist_coeffs):
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -27,9 +42,16 @@ def find_charuco_pose(image, board, aruco_dict, camera_matrix, dist_coeffs):
         corners, ids, rejectedImgPoints = cv2.aruco.detectMarkers(gray, aruco_dict)
     
     if ids is not None and len(ids) > 0:
-        # 체커보드 코너 보간
+
+        converted_ids = convert_calib_id_to_opencv(ids)
+
+        # 체커보드 코너 보간 (ids 대신 converted_ids 사용)
         ret, charuco_corners, charuco_ids = cv2.aruco.interpolateCornersCharuco(
-            corners, ids, gray, board)
+            corners, converted_ids, gray, board)
+
+        # # 체커보드 코너 보간
+        # ret, charuco_corners, charuco_ids = cv2.aruco.interpolateCornersCharuco(
+        #     corners, ids, gray, board)
         
         # 최소 4개 이상의 코너가 보여야 3D 포즈 추정 가능
         if charuco_corners is not None and charuco_ids is not None and len(charuco_corners) >= 4:
@@ -64,14 +86,37 @@ def calibrate_camera_from_charuco(image_paths, board, aruco_dict):
             corners, ids, _ = detector.detectMarkers(gray)
         else:
             corners, ids, _ = cv2.aruco.detectMarkers(gray, aruco_dict)
-        
+
         if ids is not None and len(ids) > 0:
+            # [추가] ID 변환 적용
+            converted_ids = convert_calib_id_to_opencv(ids)
+            
+            # 체커보드 코너 보간 (ids 대신 converted_ids 사용)
             ret, charuco_corners, charuco_ids = cv2.aruco.interpolateCornersCharuco(
-                corners, ids, gray, board)
-                
+                corners, converted_ids, gray, board)
+        
+        # ========================================================
+        # 수정 후 (올바른 형태)
+        if ids is not None and len(ids) > 0:
+            # [추가] ID 변환 적용
+            converted_ids = convert_calib_id_to_opencv(ids)
+            
+            # 체커보드 코너 보간 (ids 대신 converted_ids 사용)
+            ret, charuco_corners, charuco_ids = cv2.aruco.interpolateCornersCharuco(
+                corners, converted_ids, gray, board)
+            
+            # [복구된 부분] 찾은 코너를 리스트에 담기
             if charuco_corners is not None and charuco_ids is not None and len(charuco_corners) > 3:
                 all_corners.append(charuco_corners)
                 all_ids.append(charuco_ids)
+        
+        # if ids is not None and len(ids) > 0:
+        #     ret, charuco_corners, charuco_ids = cv2.aruco.interpolateCornersCharuco(
+        #         corners, ids, gray, board)
+                
+        #     if charuco_corners is not None and charuco_ids is not None and len(charuco_corners) > 3:
+        #         all_corners.append(charuco_corners)
+        #         all_ids.append(charuco_ids)
 
     if len(all_corners) < 5: # [수정] 안정적인 캘리브레이션을 위해 최소 요구 개수 상향
         print(f"ChArUco 보드 코너를 충분히 찾지 못하였습니다. (현재: {len(all_corners)}장)")
