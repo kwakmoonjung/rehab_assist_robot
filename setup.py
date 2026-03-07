@@ -40,6 +40,7 @@ setup(
             'rehab_manager = object_detection.rehab_manager:main',
             'correction_robot = object_detection.correction_robot:main',
             'yolov11n_pose = object_detection.yolov11n_pose:main',
+            'yolov11n_pose_space = object_detection.yolov11n_pose_space:main',
         ],
     },
 )

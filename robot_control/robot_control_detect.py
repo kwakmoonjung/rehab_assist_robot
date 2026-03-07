@@ -1,28 +1,28 @@
 import os
-import time
 import sys
 from scipy.spatial.transform import Rotation
 import numpy as np
 import rclpy
 from rclpy.node import Node
 import DR_init
+import time
 
-from geometry_msgs.msg import Point # 3D 중심점 구독용
+from geometry_msgs.msg import Point 
 from ament_index_python.packages import get_package_share_directory
-from robot_control.onrobot import RG # 패키지명에 맞게 유지
+from robot_control.onrobot import RG 
 
-package_path = get_package_share_directory("rehab_assist_robot") # 실제 구동 패키지명으로 변경 필요 시 수정
+package_path = get_package_share_directory("rehab_assist_robot") 
 
-# for single robot
 ROBOT_ID = "dsr01"
 ROBOT_MODEL = "m0609"
-VELOCITY, ACC = 100, 100 # 추종을 위해 속도/가속도를 조금 높임 (테스트하며 조절)
+VELOCITY, ACC = 100, 100 
 GRIPPER_NAME = "rg2"
 TOOLCHARGER_IP = "192.168.1.1"
 TOOLCHARGER_PORT = "502"
-DEPTH_OFFSET = 100.0 # 손목에 부딪히지 않도록 Z축 위로 100mm 띄움
-Y_OFFSET = 30.0       # [추가] Y축 방향 오프셋 (안전 거리, 예: 30mm)
+DEPTH_OFFSET = 40 # 50.0 #100.0 
+Y_OFFSET = 0.0 #30.0       
 MIN_DEPTH = 50.0
+LIFT_OFFSET = 400.0 #50.0  # [추가] 들어올릴 Z축 높이 (50mm)
 
 DR_init.__dsr__id = ROBOT_ID
 DR_init.__dsr__model = ROBOT_MODEL
@@ -32,36 +32,36 @@ dsr_node = rclpy.create_node("robot_control_node", namespace=ROBOT_ID)
 DR_init.__dsr__node = dsr_node
 
 try:
-    from DSR_ROBOT2 import movej, movel, get_current_posj, get_current_posx, mwait, trans
+    from DSR_ROBOT2 import movej, movel, get_current_posj, get_current_posx, mwait
 except ImportError as e:
     print(f"Error importing DSR_ROBOT2: {e}")
     sys.exit()
 
-########### Gripper Setup ############
 gripper = RG(GRIPPER_NAME, TOOLCHARGER_IP, TOOLCHARGER_PORT)
 
-########### Robot Controller ############
 class RobotController(Node):
     def __init__(self):
         super().__init__("wrist_tracking_robot")
         self.init_robot()
 
-        # [추가] YOLO 노드에서 발행하는 손목 중심점 3D 좌표 구독
-        self.wrist_sub = self.create_subscription(
+        # [추가 및 수정] 양 손목의 중간점(midpoint)을 받아오는 Subscriber 활성화
+        self.midpoint_sub = self.create_subscription(
             Point, 
             '/wrist_midpoint_3d', 
-            self.wrist_callback, 
+            self.midpoint_callback, 
             10
         )
-        
-        self.latest_cam_pos = None # 최신 카메라 3D 좌표 저장용
-        self.get_logger().info("🚀 손목 중심점 트래킹 대기 중...")
 
-    def wrist_callback(self, msg):
-        """비전 노드에서 중심점이 날아오면 최신 데이터 업데이트"""
-        # 카메라 Z축 값이 0보다 클 때만 유효한 값으로 판단
-        if msg.z > 0:
-            self.latest_cam_pos = [msg.x, msg.y, msg.z]
+        # [기존 코드 주석 처리] 원래 왼쪽 손목을 따라가게 하던 Subscriber
+        # self.wrist_sub = self.create_subscription(
+        #     Point, 
+        #     '/left_wrist_3d', 
+        #     self.wrist_callback, 
+        #     10
+        # )
+        
+        self.is_moving = False # 중복 이동 방지 플래그
+        self.get_logger().info("🚀 로봇 대기 중... (카메라 창에서 스페이스바를 누르면 중간점으로 이동합니다)")
 
     def get_robot_pose_matrix(self, x, y, z, rx, ry, rz):
         R = Rotation.from_euler("ZYZ", [rx, ry, rz], degrees=True).as_matrix()
@@ -71,71 +71,119 @@ class RobotController(Node):
         return T
 
     def transform_to_base(self, camera_coords, gripper2cam_path, robot_pos):
-        """카메라 좌표계를 로봇 베이스 좌표계로 변환"""
         gripper2cam = np.load(gripper2cam_path)
-        coord = np.append(np.array(camera_coords), 1)  # Homogeneous coordinate
+        coord = np.append(np.array(camera_coords), 1) 
 
         x, y, z, rx, ry, rz = robot_pos
         base2gripper = self.get_robot_pose_matrix(x, y, z, rx, ry, rz)
 
-        # 좌표 변환 (카메라 -> 그리퍼 -> 베이스)
         base2cam = base2gripper @ gripper2cam
         td_coord = np.dot(base2cam, coord)
 
         return td_coord[:3]
 
-    def robot_control(self):
-        """메인 제어 루프: 새로운 목표점이 있으면 그곳으로 이동"""
-        if self.latest_cam_pos is None:
-            return # 데이터가 아직 안 들어왔으면 리턴
+    def midpoint_callback(self, msg):
+        """[추가] 양 손목의 중간점(midpoint)으로 로봇을 이동시키는 콜백 함수"""
+        if self.is_moving:
+            self.get_logger().warn("⚠️ 현재 로봇이 이동 중입니다. 명령을 무시합니다.")
+            return
 
-        # 최신 데이터를 로컬 변수에 복사하고 None으로 초기화 (중복 이동 방지)
-        target_cam_pos = self.latest_cam_pos.copy()
-        self.latest_cam_pos = None 
+        if msg.z <= 0:
+            self.get_logger().warn("유효하지 않은 Depth 값입니다.")
+            return
 
-        gripper2cam_path = os.path.join(package_path, "resource", "T_gripper2camera_diff_braket.npy")
+        self.is_moving = True
         
-        # 1. 로봇의 현재 위치 획득
-        robot_posx = get_current_posx()[0]
-        
-        # 2. 좌표 변환 수행 (카메라 3D -> 로봇 Base 3D)
-        td_coord = self.transform_to_base(target_cam_pos, gripper2cam_path, robot_posx)
-        
-        # 3. 안전 오프셋 적용
-        td_coord[2] += DEPTH_OFFSET # 손목에 로봇이 닿지 않게 일정 거리 유지
-        td_coord[2] = max(td_coord[2], MIN_DEPTH) # 로봇이 바닥을 치지 않게 제한
-        td_coord[1] += Y_OFFSET     # [추가] Y축 보정 (봉에서 살짝 떨어지게 함)
-
-        # 4. 목표 위치 리스트 생성 (X, Y, Z는 새로운 좌표, Rx, Ry, Rz는 기존 자세 유지)
-        target_pos = list(td_coord[:3]) + robot_posx[3:]
-
-        self.get_logger().info(f"이동 목표 (Base): X={target_pos[0]:.1f}, Y={target_pos[1]:.1f}, Z={target_pos[2]:.1f}")
-        
-        # 5. 로봇 이동
         try:
+            target_cam_pos = [msg.x, msg.y, msg.z]
+            gripper2cam_path = os.path.join(package_path, "resource", "T_gripper2camera_diff_braket.npy")
+            
+            robot_posx = get_current_posx()[0]
+            td_coord = self.transform_to_base(target_cam_pos, gripper2cam_path, robot_posx)
+            
+            td_coord[2] += DEPTH_OFFSET 
+            td_coord[2] = max(td_coord[2], MIN_DEPTH) 
+            td_coord[1] += Y_OFFSET     
+
+            # 2. movel 이동 직전, 제자리에서 6축(마지막 조인트)만 90도 회전
+            self.get_logger().info("🔄 movel 전 6축 90도 회전 시작")
+            current_posj = get_current_posj()
+            rotated_posj = list(current_posj)
+            rotated_posj[5] += 90.0  # 6축 조인트 각도 90도 증가 (반대 회전이 필요하면 -90.0)
+            movej(rotated_posj, vel=VELOCITY, acc=ACC)
+            mwait()
+            self.get_logger().info("✅ 6축 회전 완료")
+
+            # --- [수정된 부분 시작] ---
+            # 회전이 완료된 후 변경된 툴의 자세(Rx, Ry, Rz)를 다시 읽어옵니다.
+            rotated_posx = get_current_posx()[0] 
+            
+            # 계산해둔 목표 위치(X,Y,Z)에 새로 읽어온 회전 후의 자세(Rx, Ry, Rz)를 결합합니다.
+            target_pos = list(td_coord[:3]) + list(rotated_posx[3:])
+            # --- [수정된 부분 끝] ---
+
+            self.get_logger().info(f"📍 중간점(Midpoint)으로 로봇 이동 시작: X={target_pos[0]:.1f}, Y={target_pos[1]:.1f}, Z={target_pos[2]:.1f}")
             movel(target_pos, vel=VELOCITY, acc=ACC)
-            # mwait()를 제거하거나 짧게 대기하게 해야 연속적인 트래킹(추종)이 부드럽게 이어집니다.
-            # 하지만 안전을 위해 처음에는 넣고 테스트해 보세요.
             mwait() 
+            self.get_logger().info("✅ 목표 위치(중간점) 도착 완료!")
+
+            # (필요시 아래 주석을 해제하여 잡기 및 들어올리기 동작 수행)
+            self.get_logger().info("✊ 중간 파지 지점 잡기 (그리퍼 닫기)")
+            gripper.close_gripper(force_val=100)
+            time.sleep(4.0)
+            
+            target_pos_up = list(target_pos)
+            target_pos_up[2] += LIFT_OFFSET
+            self.get_logger().info(f"⬆️ Z축으로 {LIFT_OFFSET}mm 들어올리기 시작")
+            movel(target_pos_up, vel=VELOCITY, acc=ACC)
+            mwait()
+            self.get_logger().info("✅ 자세 교정(Z축 이동) 완료!")
+        
         except Exception as e:
-            self.get_logger().error(f"이동 중 에러 발생: {e}")
+            self.get_logger().error(f"중간점 이동 중 에러 발생: {e}")
+        finally:
+            self.is_moving = False
+
+    # [기존 코드 주석 처리] 원래 개별 손목 위치로 이동하던 콜백 함수
+    # def wrist_callback(self, msg):
+    #     if self.is_moving:
+    #         self.get_logger().warn("⚠️ 현재 로봇이 이동 중입니다. 명령을 무시합니다.")
+    #         return
+    #     if msg.z <= 0:
+    #         self.get_logger().warn("유효하지 않은 Depth 값입니다.")
+    #         return
+    #     self.is_moving = True
+    #     try:
+    #         target_cam_pos = [msg.x, msg.y, msg.z]
+    #         gripper2cam_path = os.path.join(package_path, "resource", "T_gripper2camera_diff_braket.npy")
+    #         robot_posx = get_current_posx()[0]
+    #         td_coord = self.transform_to_base(target_cam_pos, gripper2cam_path, robot_posx)
+    #         td_coord[2] += DEPTH_OFFSET 
+    #         td_coord[2] = max(td_coord[2], MIN_DEPTH) 
+    #         td_coord[1] += Y_OFFSET     
+    #         target_pos = list(td_coord[:3]) + robot_posx[3:]
+    #         self.get_logger().info(f"📍 로봇 이동 시작: X={target_pos[0]:.1f}, Y={target_pos[1]:.1f}, Z={target_pos[2]:.1f}")
+    #         movel(target_pos, vel=VELOCITY, acc=ACC)
+    #         mwait() 
+    #         self.get_logger().info("✅ 목표 위치 도착 완료!")
+    #     except Exception as e:
+    #         self.get_logger().error(f"이동 중 에러 발생: {e}")
+    #     finally:
+    #         self.is_moving = False
 
     def init_robot(self):
         JReady = [0, 0, 90, 0, 90, 0]
-        #movej(JReady, vel=VELOCITY, acc=ACC)
-        init_pos = get_current_posj()[0]
+        movej(JReady, vel=VELOCITY, acc=ACC)
+
+        init_pos = [73.03, 71.08, -33.55, 23.68, -123.47, -74.72]
+        movej(init_pos, vel=VELOCITY, acc=ACC)
         print(f'init pos: {init_pos}')
         gripper.open_gripper()
         mwait()
 
 def main(args=None):
     node = RobotController()
-    
-    # 주기적으로 콜백(Subscriber)을 처리하고 제어 루프를 실행하도록 변경
-    while rclpy.ok():
-        rclpy.spin_once(node, timeout_sec=0.1) # 토픽이 오는지 0.1초 동안 확인
-        node.robot_control()                   # 목표점이 갱신되었다면 이동
-        
+    rclpy.spin(node) 
     rclpy.shutdown()
     node.destroy_node()
 
