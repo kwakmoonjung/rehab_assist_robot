@@ -43,25 +43,24 @@ class RobotController(Node):
         super().__init__("wrist_tracking_robot")
         self.init_robot()
 
-        # # 인지 노드에서 '스페이스바'를 누를 때만 들어오는 토픽
+        # [추가 및 수정] 양 손목의 중간점(midpoint)을 받아오는 Subscriber 활성화
+        self.midpoint_sub = self.create_subscription(
+            Point, 
+            '/wrist_midpoint_3d', 
+            self.midpoint_callback, 
+            10
+        )
+
+        # [기존 코드 주석 처리] 원래 왼쪽 손목을 따라가게 하던 Subscriber
         # self.wrist_sub = self.create_subscription(
         #     Point, 
-        #     '/wrist_midpoint_3d', 
+        #     '/left_wrist_3d', 
         #     self.wrist_callback, 
         #     10
         # )
-
-        # 인지 노드에서 '스페이스바'를 누를 때만 들어오는 토픽
-        self.wrist_sub = self.create_subscription(
-            Point, 
-            '/left_wrist_3d', 
-            self.wrist_callback, 
-            10
-        )
-        
         
         self.is_moving = False # 중복 이동 방지 플래그
-        self.get_logger().info("🚀 로봇 대기 중... (카메라 창에서 스페이스바를 누르면 이동합니다)")
+        self.get_logger().info("🚀 로봇 대기 중... (카메라 창에서 스페이스바를 누르면 중간점으로 이동합니다)")
 
     def get_robot_pose_matrix(self, x, y, z, rx, ry, rz):
         R = Rotation.from_euler("ZYZ", [rx, ry, rz], degrees=True).as_matrix()
@@ -82,9 +81,8 @@ class RobotController(Node):
 
         return td_coord[:3]
 
-    def wrist_callback(self, msg):
-        """스페이스바로 토픽이 발행되었을 때만 호출되어 로봇 이동"""
-        # 로봇이 이미 이동 중이라면 새 명령 무시 (안전 장치)
+    def midpoint_callback(self, msg):
+        """[추가] 양 손목의 중간점(midpoint)으로 로봇을 이동시키는 콜백 함수"""
         if self.is_moving:
             self.get_logger().warn("⚠️ 현재 로봇이 이동 중입니다. 명령을 무시합니다.")
             return
@@ -108,33 +106,54 @@ class RobotController(Node):
 
             target_pos = list(td_coord[:3]) + robot_posx[3:]
 
-            self.get_logger().info(f"📍 로봇 이동 시작: X={target_pos[0]:.1f}, Y={target_pos[1]:.1f}, Z={target_pos[2]:.1f}")
-            movel(target_pos, vel=VELOCITY, acc=ACC)
+            self.get_logger().info(f"📍 중간점(Midpoint)으로 로봇 이동 시작: X={target_pos[0]:.1f}, Y={target_pos[1]:.1f}, Z={target_pos[2]:.1f}")
+            # movel(target_pos, vel=VELOCITY, acc=ACC)
             mwait() 
-            self.get_logger().info("✅ 목표 위치 도착 완료!")
+            self.get_logger().info("✅ 목표 위치(중간점) 도착 완료!")
 
-            # 2. 그리퍼 닫기 (사람 손목이므로 힘을 100으로 낮춰서 잡음)
-            # self.get_logger().info("✊ 손목 파지 (그리퍼 닫기)")
+            # (필요시 아래 주석을 해제하여 잡기 및 들어올리기 동작 수행)
+            # self.get_logger().info("✊ 중간 파지 지점 잡기 (그리퍼 닫기)")
             # gripper.close_gripper(force_val=100)
-            # time.sleep(1.5)  # 그리퍼가 완전히 닫힐 때까지 대기
+            # time.sleep(1.5)
             
-            # # 3. Z축으로 살짝 들어올리기 (Lift)
             # target_pos_up = list(target_pos)
             # target_pos_up[2] += LIFT_OFFSET
-            
             # self.get_logger().info(f"⬆️ Z축으로 {LIFT_OFFSET}mm 들어올리기 시작")
             # movel(target_pos_up, vel=VELOCITY, acc=ACC)
             # mwait()
             # self.get_logger().info("✅ 자세 교정(Z축 이동) 완료!")
-
-            # 필요시 일정 시간 유지 후 그리퍼를 다시 여는 로직 추가 가능
-            # time.sleep(2)
-            # gripper.open_gripper()
         
         except Exception as e:
-            self.get_logger().error(f"이동 중 에러 발생: {e}")
+            self.get_logger().error(f"중간점 이동 중 에러 발생: {e}")
         finally:
-            self.is_moving = False # 이동 완료 후 플래그 해제
+            self.is_moving = False
+
+    # [기존 코드 주석 처리] 원래 개별 손목 위치로 이동하던 콜백 함수
+    # def wrist_callback(self, msg):
+    #     if self.is_moving:
+    #         self.get_logger().warn("⚠️ 현재 로봇이 이동 중입니다. 명령을 무시합니다.")
+    #         return
+    #     if msg.z <= 0:
+    #         self.get_logger().warn("유효하지 않은 Depth 값입니다.")
+    #         return
+    #     self.is_moving = True
+    #     try:
+    #         target_cam_pos = [msg.x, msg.y, msg.z]
+    #         gripper2cam_path = os.path.join(package_path, "resource", "T_gripper2camera_diff_braket.npy")
+    #         robot_posx = get_current_posx()[0]
+    #         td_coord = self.transform_to_base(target_cam_pos, gripper2cam_path, robot_posx)
+    #         td_coord[2] += DEPTH_OFFSET 
+    #         td_coord[2] = max(td_coord[2], MIN_DEPTH) 
+    #         td_coord[1] += Y_OFFSET     
+    #         target_pos = list(td_coord[:3]) + robot_posx[3:]
+    #         self.get_logger().info(f"📍 로봇 이동 시작: X={target_pos[0]:.1f}, Y={target_pos[1]:.1f}, Z={target_pos[2]:.1f}")
+    #         movel(target_pos, vel=VELOCITY, acc=ACC)
+    #         mwait() 
+    #         self.get_logger().info("✅ 목표 위치 도착 완료!")
+    #     except Exception as e:
+    #         self.get_logger().error(f"이동 중 에러 발생: {e}")
+    #     finally:
+    #         self.is_moving = False
 
     def init_robot(self):
         JReady = [0, 0, 90, 0, 90, 0]
@@ -147,9 +166,8 @@ class RobotController(Node):
         mwait()
 
 def main(args=None):
-
     node = RobotController()
-    rclpy.spin(node) # 콜백 대기만 수행하는 깔끔한 구조
+    rclpy.spin(node) 
     rclpy.shutdown()
     node.destroy_node()
 
