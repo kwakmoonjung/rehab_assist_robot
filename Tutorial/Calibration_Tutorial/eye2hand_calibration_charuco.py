@@ -4,6 +4,7 @@ import numpy as np
 import cv2
 from scipy.linalg import sqrtm
 from numpy.linalg import inv
+import os # [추가] 경로 처리를 위한 모듈
 
 # 1) 로봇 그리퍼의 절대 좌표를 행렬로 변환
 def get_robot_pose_matrix(x, y, z, rx, ry, rz):
@@ -17,8 +18,13 @@ def get_robot_pose_matrix(x, y, z, rx, ry, rz):
 def find_charuco_pose(image, board, aruco_dict, camera_matrix, dist_coeffs):
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     
-    # 아루코 마커 검출 (구버전 API 완벽 호환)
-    corners, ids, rejectedImgPoints = cv2.aruco.detectMarkers(gray, aruco_dict)
+    # OpenCV 최신 버전(4.7 이상) 호환성 대응
+    if hasattr(cv2.aruco, 'ArucoDetector'):
+        detector = cv2.aruco.ArucoDetector(aruco_dict, cv2.aruco.DetectorParameters())
+        corners, ids, rejectedImgPoints = detector.detectMarkers(gray)
+    else:
+        # 아루코 마커 검출 (구버전 API 완벽 호환)
+        corners, ids, rejectedImgPoints = cv2.aruco.detectMarkers(gray, aruco_dict)
     
     if ids is not None and len(ids) > 0:
         # 체커보드 코너 보간
@@ -32,9 +38,9 @@ def find_charuco_pose(image, board, aruco_dict, camera_matrix, dist_coeffs):
             
             if valid:
                 R, _ = cv2.Rodrigues(rvec)
-                return R, tvec
+                return R, tvec, charuco_corners, charuco_ids # [수정] 디버그를 위해 코너와 아이디 반환 추가
                 
-    return None, None
+    return None, None, None, None # [수정] 반환 개수 일치
 
 # 3) ChArUco 이미지를 이용한 카메라 보정 (Intrinsic)
 def calibrate_camera_from_charuco(image_paths, board, aruco_dict):
@@ -45,13 +51,19 @@ def calibrate_camera_from_charuco(image_paths, board, aruco_dict):
     for fname in image_paths:
         img = cv2.imread(fname)
         if img is None:
+            print(f"이미지 로드 실패 (경로 확인 필요): {fname}") 
             continue
             
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         if image_shape is None:
             image_shape = gray.shape[::-1]
 
-        corners, ids, _ = cv2.aruco.detectMarkers(gray, aruco_dict)
+        # OpenCV 최신 버전(4.7 이상) 호환성 대응
+        if hasattr(cv2.aruco, 'ArucoDetector'):
+            detector = cv2.aruco.ArucoDetector(aruco_dict, cv2.aruco.DetectorParameters())
+            corners, ids, _ = detector.detectMarkers(gray)
+        else:
+            corners, ids, _ = cv2.aruco.detectMarkers(gray, aruco_dict)
         
         if ids is not None and len(ids) > 0:
             ret, charuco_corners, charuco_ids = cv2.aruco.interpolateCornersCharuco(
@@ -61,8 +73,8 @@ def calibrate_camera_from_charuco(image_paths, board, aruco_dict):
                 all_corners.append(charuco_corners)
                 all_ids.append(charuco_ids)
 
-    if len(all_corners) < 1:
-        print("ChArUco 보드 코너를 충분히 찾지 못하였습니다.")
+    if len(all_corners) < 5: # [수정] 안정적인 캘리브레이션을 위해 최소 요구 개수 상향
+        print(f"ChArUco 보드 코너를 충분히 찾지 못하였습니다. (현재: {len(all_corners)}장)")
         return None, None, None, None
 
     ret, camera_matrix, dist_coeffs, rvecs, tvecs = cv2.aruco.calibrateCameraCharuco(
@@ -73,6 +85,30 @@ def calibrate_camera_from_charuco(image_paths, board, aruco_dict):
         return None, None, None, None
 
     return camera_matrix, dist_coeffs, rvecs, tvecs
+
+# [추가] 디버그 이미지 저장 함수
+def save_debug_image(image, save_path, board=None, charuco_corners=None, charuco_ids=None, detected=False):
+    dbg = image.copy()
+
+    if detected and charuco_corners is not None and charuco_ids is not None:
+        cv2.aruco.drawDetectedCornersCharuco(dbg, charuco_corners, charuco_ids, (0, 255, 0))
+        label = "SUCCESS"
+        color = (0, 255, 0)
+    else:
+        label = "FAIL"
+        color = (0, 0, 255)
+
+    cv2.putText(
+        dbg,
+        label,
+        (20, 40),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        1.0,
+        color,
+        2,
+        cv2.LINE_AA
+    )
+    cv2.imwrite(save_path, dbg)
 
 # 4) 행렬 연산 및 Park & Martin 수학 로직
 def compose_transformation_matrices(R_list, t_list):
@@ -131,11 +167,18 @@ def Calibrate(A, B):
 # Main 실행부
 # ==========================================
 if __name__ == "__main__":
-    data = json.load(open("data/calibrate_data.json"))
-    robot_poses = np.array(data["poses"])
+    # 지정된 절대 경로 변수 선언
+    data_dir = "/home/rokey/cobot_ws/src/cobot2_ws/rehab_assist_robot/Tutorial/Calibration_Tutorial/data"
+    
+    # json 파일 절대 경로 설정 및 데이터 로드
+    json_path = os.path.join(data_dir, "calibrate_data.json")
+    data = json.load(open(json_path))
 
+    robot_poses = np.array(data["poses"])
     robot_poses[:, :3] = robot_poses[:, :3]
-    image_paths = ["data/" + d for d in data["file_name"]]
+    
+    # 이미지 경로에 절대 경로 적용
+    image_paths = [os.path.join(data_dir, d) for d in data["file_name"]]
 
     valid_indices = []
     for i, pose in enumerate(robot_poses):
@@ -153,18 +196,29 @@ if __name__ == "__main__":
     # ---------------------------------------------------------
     squaresX = 5
     squaresY = 7
-    square_size = 28.0  # (예: 30mm) 흑백 네모 1칸의 실제 길이
-    marker_size = 17.0  # (예: 22mm) 내부 ArUco 마커 1칸의 실제 길이
+    square_size = 27.0  # (예: 30mm) 흑백 네모 1칸의 실제 길이
+    marker_size = 16.0  # (예: 22mm) 내부 ArUco 마커 1칸의 실제 길이
     
     # 4.6 이하 버전 완벽 호환 딕셔너리 생성 명령어
     try:
-        aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_6X6_250)
+        aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_6X6_250)  # 내부 비트 패턴 6*6
     except AttributeError:
         # 혹시나 최신 버전일 경우를 대비한 안전장치
         aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_250)
         
-    board = cv2.aruco.CharucoBoard_create(squaresX, squaresY, square_size, marker_size, aruco_dict)
+    try:
+        board = cv2.aruco.CharucoBoard_create(squaresX, squaresY, square_size, marker_size, aruco_dict)
+    except AttributeError:
+        # OpenCV 4.7 이상 버전을 위한 호환 코드
+        board = cv2.aruco.CharucoBoard((squaresX, squaresY), square_size, marker_size, aruco_dict)
     # ---------------------------------------------------------
+
+    # [추가] 디버그 폴더 생성
+    debug_root = "debug_detect_charuco"
+    success_dir = os.path.join(debug_root, "success")
+    fail_dir = os.path.join(debug_root, "fail")
+    os.makedirs(success_dir, exist_ok=True)
+    os.makedirs(fail_dir, exist_ok=True)
 
     print("카메라 내부 파라미터 캘리브레이션 시작...")
     camera_matrix, dist_coeffs, rvecs, tvecs = calibrate_camera_from_charuco(
@@ -183,17 +237,45 @@ if __name__ == "__main__":
     R_checker2camera_list = []
     t_checker2camera_list = []
 
+    success_count = 0 # [추가] 성공 카운트
+    fail_count = 0    # [추가] 실패 카운트
+
     for img_path, pose in zip(image_paths, robot_poses):
         T_base2gripper = get_robot_pose_matrix(*pose)
         image = cv2.imread(img_path)
+        base_name = os.path.basename(img_path) # [추가] 파일명 추출
+
         if image is None:
+            print(f"[WARN] 이미지 로드 실패: {img_path}")
+            fail_count += 1
             continue
 
-        R_cam2checker, t_cam2checker = find_charuco_pose(
+        # [수정] 코너와 ID 반환받기
+        R_cam2checker, t_cam2checker, charuco_corners, charuco_ids = find_charuco_pose(
             image, board, aruco_dict, camera_matrix, dist_coeffs
         )
+        
         if R_cam2checker is None:
+            print(f"[FAIL] 마커 검출 실패: {img_path}")
+            # [추가] 실패 이미지 저장
+            save_debug_image(
+                image=image,
+                save_path=os.path.join(fail_dir, base_name),
+                detected=False
+            )
+            fail_count += 1
             continue
+
+        # [추가] 성공 이미지 저장
+        save_debug_image(
+            image=image,
+            save_path=os.path.join(success_dir, base_name),
+            board=board,
+            charuco_corners=charuco_corners,
+            charuco_ids=charuco_ids,
+            detected=True
+        )
+        success_count += 1
 
         T_gripper2base = np.linalg.inv(T_base2gripper)
         R_gripper2base = T_gripper2base[:3, :3]
@@ -209,6 +291,10 @@ if __name__ == "__main__":
 
         R_checker2camera_list.append(T_checker2cam[:3, :3].copy())
         t_checker2camera_list.append(T_checker2cam[:3, 3].copy())
+
+    print("\n[INFO] Data count check")
+    print("successful pairs:", success_count)
+    print("failed images    :", fail_count)
 
     T_gripper2base_list = compose_transformation_matrices(R_gripper2base_list, t_gripper2base_list)
     T_checker2cam_list = compose_transformation_matrices(R_checker2camera_list, t_checker2camera_list)
