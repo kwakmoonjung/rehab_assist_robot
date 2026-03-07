@@ -5,6 +5,7 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 import DR_init
+import time
 
 from geometry_msgs.msg import Point 
 from ament_index_python.packages import get_package_share_directory
@@ -18,10 +19,10 @@ VELOCITY, ACC = 100, 100
 GRIPPER_NAME = "rg2"
 TOOLCHARGER_IP = "192.168.1.1"
 TOOLCHARGER_PORT = "502"
-DEPTH_OFFSET = 50.0 #100.0 
+DEPTH_OFFSET = 40 # 50.0 #100.0 
 Y_OFFSET = 0.0 #30.0       
 MIN_DEPTH = 50.0
-LIFT_OFFSET = 50.0  # [추가] 들어올릴 Z축 높이 (50mm)
+LIFT_OFFSET = 400.0 #50.0  # [추가] 들어올릴 Z축 높이 (50mm)
 
 DR_init.__dsr__id = ROBOT_ID
 DR_init.__dsr__model = ROBOT_MODEL
@@ -104,24 +105,39 @@ class RobotController(Node):
             td_coord[2] = max(td_coord[2], MIN_DEPTH) 
             td_coord[1] += Y_OFFSET     
 
-            target_pos = list(td_coord[:3]) + robot_posx[3:]
+            # 2. movel 이동 직전, 제자리에서 6축(마지막 조인트)만 90도 회전
+            self.get_logger().info("🔄 movel 전 6축 90도 회전 시작")
+            current_posj = get_current_posj()
+            rotated_posj = list(current_posj)
+            rotated_posj[5] += 90.0  # 6축 조인트 각도 90도 증가 (반대 회전이 필요하면 -90.0)
+            movej(rotated_posj, vel=VELOCITY, acc=ACC)
+            mwait()
+            self.get_logger().info("✅ 6축 회전 완료")
+
+            # --- [수정된 부분 시작] ---
+            # 회전이 완료된 후 변경된 툴의 자세(Rx, Ry, Rz)를 다시 읽어옵니다.
+            rotated_posx = get_current_posx()[0] 
+            
+            # 계산해둔 목표 위치(X,Y,Z)에 새로 읽어온 회전 후의 자세(Rx, Ry, Rz)를 결합합니다.
+            target_pos = list(td_coord[:3]) + list(rotated_posx[3:])
+            # --- [수정된 부분 끝] ---
 
             self.get_logger().info(f"📍 중간점(Midpoint)으로 로봇 이동 시작: X={target_pos[0]:.1f}, Y={target_pos[1]:.1f}, Z={target_pos[2]:.1f}")
-            # movel(target_pos, vel=VELOCITY, acc=ACC)
+            movel(target_pos, vel=VELOCITY, acc=ACC)
             mwait() 
             self.get_logger().info("✅ 목표 위치(중간점) 도착 완료!")
 
             # (필요시 아래 주석을 해제하여 잡기 및 들어올리기 동작 수행)
-            # self.get_logger().info("✊ 중간 파지 지점 잡기 (그리퍼 닫기)")
-            # gripper.close_gripper(force_val=100)
-            # time.sleep(1.5)
+            self.get_logger().info("✊ 중간 파지 지점 잡기 (그리퍼 닫기)")
+            gripper.close_gripper(force_val=100)
+            time.sleep(4.0)
             
-            # target_pos_up = list(target_pos)
-            # target_pos_up[2] += LIFT_OFFSET
-            # self.get_logger().info(f"⬆️ Z축으로 {LIFT_OFFSET}mm 들어올리기 시작")
-            # movel(target_pos_up, vel=VELOCITY, acc=ACC)
-            # mwait()
-            # self.get_logger().info("✅ 자세 교정(Z축 이동) 완료!")
+            target_pos_up = list(target_pos)
+            target_pos_up[2] += LIFT_OFFSET
+            self.get_logger().info(f"⬆️ Z축으로 {LIFT_OFFSET}mm 들어올리기 시작")
+            movel(target_pos_up, vel=VELOCITY, acc=ACC)
+            mwait()
+            self.get_logger().info("✅ 자세 교정(Z축 이동) 완료!")
         
         except Exception as e:
             self.get_logger().error(f"중간점 이동 중 에러 발생: {e}")
