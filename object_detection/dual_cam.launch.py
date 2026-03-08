@@ -5,7 +5,6 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
 
 def generate_launch_description():
-    # ⭐️ 찾아주신 정확한 경로(examples/align_depth)로 수정했습니다!
     rs_launch_file = os.path.join(
         get_package_share_directory('realsense2_camera'),
         'examples',
@@ -13,7 +12,6 @@ def generate_launch_description():
         'rs_align_depth_launch.py'
     )
 
-    # 두 카메라에 공통으로 들어갈 해상도 및 기능 파라미터 세팅
     common_args = {
         'depth_module.depth_profile': '848x480x30',
         'rgb_camera.color_profile': '1280x720x30',
@@ -28,7 +26,7 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(rs_launch_file),
         launch_arguments={
             **common_args,
-            'serial_no': '141722076528',
+            'serial_no': '_141722076528',  # ⭐️ 문자열 인식을 위해 앞에 _ 추가
             'camera_namespace': 'robot',
             'camera_name': 'camera'
         }.items()
@@ -39,13 +37,12 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(rs_launch_file),
         launch_arguments={
             **common_args,
-            'serial_no': '215322078366',
+            'serial_no': '_215322078366',  # ⭐️ 문자열 인식을 위해 앞에 _ 추가
             'camera_namespace': 'fixed',
             'camera_name': 'camera'
         }.items()
     )
 
-    # 두 카메라를 동시에 실행하도록 반환
     return LaunchDescription([
         robot_cam,
         fixed_cam
