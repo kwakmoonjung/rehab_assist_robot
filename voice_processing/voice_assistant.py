@@ -146,6 +146,9 @@ class VoiceAssistant(Node):
 - 도구와 위치는 공백으로 구분 (목적지가 없으면 / 뒤를 비움)
 - "나 운동 시작할게", "운동하자" 등은 start_exercise로 분류
 - "자세 교정해줘", "로봇 움직여줘" 등은 posture_correction으로 분류
+
+<사용자 입력>
+{user_input}
 """
         self.prompt_template = PromptTemplate(
             input_variables=["user_input"],
