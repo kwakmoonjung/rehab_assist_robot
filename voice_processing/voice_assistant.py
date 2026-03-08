@@ -15,6 +15,8 @@ from langchain_openai import ChatOpenAI
 from langchain.prompts import PromptTemplate
 from std_srvs.srv import Trigger
 
+from std_msgs.msg import String
+
 # 사용자가 작성해둔 커스텀 음성 처리 모듈 임포트
 from voice_processing.MicController import MicController, MicConfig
 from voice_processing.wakeup_word import WakeupWord
@@ -123,32 +125,27 @@ class VoiceAssistant(Node):
 당신은 음성 명령을 분류하고 필요한 키워드를 추출하는 도우미입니다.
 
 <역할>
-사용자 문장을 아래 2가지 중 하나로 분류하세요.
+사용자 문장을 아래 4가지 중 하나로 분류하세요.
 
 1. 도구 이동 명령
 2. 운동 기록 조회/분석 요청
-
-<도구 리스트>
-- hammer, screwdriver, wrench, pos1, pos2, pos3
+3. 운동 시작 요청
+4. 자세 교정 요청
 
 <출력 형식>
-반드시 아래 셋 중 하나만 출력하세요.
+반드시 아래 중 하나만 출력하세요.
 
-1. 도구 이동 명령인 경우
-도구1 도구2 / pos1 pos2
-
-2. 운동 기록 조회/분석 요청인 경우
-exercise_log /
-
-3. 둘 다 아니면
-unknown /
+1. 도구 이동 명령인 경우: 도구1 도구2 / pos1 pos2
+2. 운동 기록 조회인 경우: exercise_log /
+3. 운동 시작 요청인 경우: start_exercise /
+4. 자세 교정 요청인 경우: posture_correction /
+5. 위 4가지에 해당하지 않으면: unknown /
 
 <규칙>
-- 설명 절대 금지
-- 다른 문장 절대 금지
-- 도구와 위치는 공백으로 구분
-- 목적지가 없으면 / 뒤를 비움
-- 운동 횟수, 자세 분석, 오늘 기록, 피드백, 운동 결과를 물으면 모두 exercise_log로 분류
+- 설명 절대 금지, 다른 문장 절대 금지
+- 도구와 위치는 공백으로 구분 (목적지가 없으면 / 뒤를 비움)
+- "나 운동 시작할게", "운동하자" 등은 start_exercise로 분류
+- "자세 교정해줘", "로봇 움직여줘" 등은 posture_correction으로 분류
 """
         self.prompt_template = PromptTemplate(
             input_variables=["user_input"],
@@ -170,6 +167,8 @@ unknown /
         )
         self.mic_controller = MicController(config=mic_config)
         self.wakeup_word = WakeupWord(mic_config.buffer_size)
+
+        self.cmd_pub = self.create_publisher(String, '/system_command', 10)
 
         # 트리거 서비스 생성
         self.voice_cmd_srv = self.create_service(
@@ -215,32 +214,50 @@ unknown /
             # 3. LLM을 통한 의도 파악
             keywords, targets = self.parse_command(output_message)
 
-            # 4. 의도에 따른 분기 처리
-            if "exercise_log" in keywords:
+            cmd_msg = String()
+
+            # 케이스 1: 운동 시작
+            if "start_exercise" in keywords:
+                cmd_msg.data = "START_EXERCISE"
+                self.cmd_pub.publish(cmd_msg)
+                self.get_logger().info("✅ [명령 퍼블리시] START_EXERCISE")
+                self.reporter.speak("네, 운동을 시작합니다. 자세를 잡아주세요.")
+                response.success = True
+                response.message = "운동 시작 명령 전달 완료"
+                return response
+
+            # 케이스 2: 자세 교정
+            elif "posture_correction" in keywords:
+                cmd_msg.data = "CORRECTION"
+                self.cmd_pub.publish(cmd_msg)
+                self.get_logger().info("✅ [명령 퍼블리시] CORRECTION")
+                self.reporter.speak("네, 로봇을 이동시켜 자세를 교정하겠습니다. 가만히 계셔주세요.")
+                response.success = True
+                response.message = "자세 교정 명령 전달 완료"
+                return response
+
+            # 케이스 3: 운동 기록 조회
+            elif "exercise_log" in keywords:
+                cmd_msg.data = "REPORT_EXERCISE"
+                self.cmd_pub.publish(cmd_msg)
+                self.get_logger().info("✅ [명령 퍼블리시] REPORT_EXERCISE")
+                
                 report_text = self.reporter.build_report_text()
                 self.get_logger().info(f"📝 운동 피드백 리포트: {report_text}")
                 self.reporter.speak(report_text)
-
+                
                 response.success = True
                 response.message = report_text
                 return response
 
-            if "unknown" in keywords or not keywords:
+            # 예외: 이해하지 못함
+            else:
                 self.get_logger().warn("❓ 명령을 이해하지 못했습니다.")
+                self.reporter.speak("잘 못 들었어요. 다시 한 번 말씀해 주시겠어요?")
                 response.success = False
-                response.message = "명령을 이해하지 못했습니다. 다시 말씀해주세요."
+                response.message = "명령을 이해하지 못했습니다."
                 return response
 
-            self.get_logger().info(f"🛠️ 도구 감지: {keywords}, 타겟 위치: {targets}")
-            response.success = True
-            response.message = " ".join(keywords)
-            return response
-
-        except OSError:
-            self.get_logger().error("❌ 마이크 스트림을 열 수 없습니다. device_index를 확인하세요.")
-            response.success = False
-            response.message = "audio stream error"
-            return response
         except Exception as e:
             self.get_logger().error(f"❌ 서비스 처리 중 에러: {e}")
             response.success = False
