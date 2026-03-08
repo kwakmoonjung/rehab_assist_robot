@@ -29,11 +29,16 @@ class ExerciseSessionLogger:
         self.session_started_at = now
         self.last_updated_at = now
         self.rep_count = 0
+
         self.frame_count = 0
+        self.analyzed_frame_count = 0
+        self.ignored_frame_count = 0
         self.good_frame_count = 0
+
         self.elbow_angle_sum = 0.0
         self.upper_arm_angle_sum = 0.0
         self.trunk_angle_sum = 0.0
+
         self.last_feedback = "No data yet"
         self.warning_counts = {
             "body_not_straight": 0,
@@ -43,17 +48,33 @@ class ExerciseSessionLogger:
         }
         self.save()
 
-    def update_frame(self, elbow_angle, upper_arm_angle, trunk_angle, feedback, is_correct):
+    def update_frame(
+        self,
+        elbow_angle=None,
+        upper_arm_angle=None,
+        trunk_angle=None,
+        feedback="No data yet",
+        is_correct=False,
+        has_valid_measurement=False,
+        count_warning=False,
+    ):
         self.frame_count += 1
-        if is_correct:
-            self.good_frame_count += 1
-
-        self.elbow_angle_sum += float(elbow_angle)
-        self.upper_arm_angle_sum += float(upper_arm_angle)
-        self.trunk_angle_sum += float(trunk_angle)
         self.last_feedback = feedback
         self.last_updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self._count_warning(feedback)
+
+        if has_valid_measurement:
+            self.analyzed_frame_count += 1
+            self.elbow_angle_sum += float(elbow_angle)
+            self.upper_arm_angle_sum += float(upper_arm_angle)
+            self.trunk_angle_sum += float(trunk_angle)
+
+            if is_correct:
+                self.good_frame_count += 1
+        else:
+            self.ignored_frame_count += 1
+
+        if count_warning:
+            self._count_warning(feedback)
 
         if self.frame_count % 15 == 0:
             self.save()
@@ -74,14 +95,14 @@ class ExerciseSessionLogger:
             self.warning_counts["arms_not_visible"] += 1
 
     def _safe_avg(self, value_sum):
-        if self.frame_count == 0:
+        if self.analyzed_frame_count == 0:
             return 0.0
-        return round(value_sum / self.frame_count, 2)
+        return round(value_sum / self.analyzed_frame_count, 2)
 
     def save(self):
         good_ratio = 0.0
-        if self.frame_count > 0:
-            good_ratio = round((self.good_frame_count / self.frame_count) * 100.0, 2)
+        if self.analyzed_frame_count > 0:
+            good_ratio = round((self.good_frame_count / self.analyzed_frame_count) * 100.0, 2)
 
         data = {
             "exercise_type": self.exercise_type,
@@ -89,6 +110,8 @@ class ExerciseSessionLogger:
             "last_updated_at": self.last_updated_at,
             "rep_count": self.rep_count,
             "frame_count": self.frame_count,
+            "analyzed_frame_count": self.analyzed_frame_count,
+            "ignored_frame_count": self.ignored_frame_count,
             "good_frame_count": self.good_frame_count,
             "good_posture_ratio": good_ratio,
             "avg_elbow_angle": self._safe_avg(self.elbow_angle_sum),
@@ -121,23 +144,41 @@ class ExerciseAnalyzer:
 class BicepCurlAnalyzer(ExerciseAnalyzer):
     def __init__(self):
         self.count = 0
-        self.state = "DOWN"
         self.logger = ExerciseSessionLogger(LOG_FILE, "bicep_curl")
 
-        # ===== 기준값 =====
+        # ===== 자세 기준 =====
         self.TRUNK_THRESHOLD = 15
-        self.BALANCE_THRESHOLD = 20
+        self.BALANCE_THRESHOLD = 30
 
-        # 팔꿈치가 몸통에서 떨어졌는지 판단하는 기준
-        # 여유롭게 잡아달라고 했던 값 반영
-        self.UPPER_ARM_THRESHOLD = 45
+        # 팔꿈치 붙임 기준 완화
+        self.UPPER_ARM_THRESHOLD = 60
 
-        # 이두컬 자세 기준
-        self.DOWN_ELBOW_ANGLE = 145
+        # 완전히 내려갔을 때만 DOWN으로 인정하도록 강화
+        self.DOWN_ELBOW_ANGLE = 160
         self.UP_ELBOW_ANGLE = 60
 
-        # YOLO 키포인트 신뢰도 기준
-        self.KEYPOINT_CONF_THRESHOLD = 0.35
+        # pose confirm frames
+        self.DOWN_CONFIRM_FRAMES = 3
+        self.UP_CONFIRM_FRAMES = 2
+
+        # 카운트 상태
+        self.confirmed_pose_state = "DOWN"
+        self.down_pose_streak = 0
+        self.up_pose_streak = 0
+
+        # ===== YOLO 오인식 무시용 기준 =====
+        self.KEYPOINT_CONF_THRESHOLD = 0.20
+        self.MISSING_GRACE_FRAMES = 6
+        self.SMOOTHING_ALPHA = 0.60
+        self.MAX_SHOULDER_HIP_JUMP = 0.08
+        self.MAX_ARM_JUMP = 0.12
+        self.MIN_SEGMENT_LENGTH = 0.015
+        self.MAX_SEGMENT_LENGTH = 0.45
+        self.MAX_LENGTH_CHANGE_RATIO = 0.70
+
+        self.missing_streak = 0
+        self.smoothed_kpts = None
+        self.last_stable_kpts = None
 
     def _is_visible(self, idx, kpt_conf):
         if kpt_conf is None:
@@ -146,40 +187,107 @@ class BicepCurlAnalyzer(ExerciseAnalyzer):
             return False
         return float(kpt_conf[idx]) >= self.KEYPOINT_CONF_THRESHOLD
 
-    def analyze(self, kpts, image, kpt_conf=None):
-        h, w, _ = image.shape
-
-        # COCO keypoint index
-        # 0 nose
-        # 5 left shoulder, 6 right shoulder
-        # 7 left elbow, 8 right elbow
-        # 9 left wrist, 10 right wrist
-        # 11 left hip, 12 right hip
+    def _has_required_points(self, kpt_conf):
         required_ids = [0, 5, 6, 7, 8, 9, 10, 11, 12]
+        return all(self._is_visible(i, kpt_conf) for i in required_ids)
 
-        if not all(self._is_visible(i, kpt_conf) for i in required_ids):
-            feedback = "Warning: Keep both arms visible!"
-            color = (0, 0, 255)
+    def _points_in_range(self, kpts):
+        required_ids = [0, 5, 6, 7, 8, 9, 10, 11, 12]
+        for idx in required_ids:
+            x, y = float(kpts[idx][0]), float(kpts[idx][1])
+            if np.isnan(x) or np.isnan(y):
+                return False
+            if x < 0.0 or x > 1.0 or y < 0.0 or y > 1.0:
+                return False
+        return True
 
-            self.logger.update_frame(
-                elbow_angle=0.0,
-                upper_arm_angle=0.0,
-                trunk_angle=0.0,
-                feedback=feedback,
-                is_correct=False,
+    def _segment_len(self, p1, p2):
+        p1 = np.array(p1[:2], dtype=np.float32)
+        p2 = np.array(p2[:2], dtype=np.float32)
+        return float(np.linalg.norm(p1 - p2))
+
+    def _get_lengths(self, kpts):
+        return {
+            "l_upper": self._segment_len(kpts[5], kpts[7]),
+            "l_lower": self._segment_len(kpts[7], kpts[9]),
+            "r_upper": self._segment_len(kpts[6], kpts[8]),
+            "r_lower": self._segment_len(kpts[8], kpts[10]),
+            "l_torso": self._segment_len(kpts[5], kpts[11]),
+            "r_torso": self._segment_len(kpts[6], kpts[12]),
+        }
+
+    def _has_reasonable_lengths(self, kpts):
+        lengths = self._get_lengths(kpts)
+
+        for seg_len in lengths.values():
+            if seg_len < self.MIN_SEGMENT_LENGTH or seg_len > self.MAX_SEGMENT_LENGTH:
+                return False
+
+        left_arm_total = lengths["l_upper"] + lengths["l_lower"]
+        right_arm_total = lengths["r_upper"] + lengths["r_lower"]
+
+        if min(left_arm_total, right_arm_total) <= 1e-6:
+            return False
+
+        arm_ratio = max(left_arm_total, right_arm_total) / min(left_arm_total, right_arm_total)
+        if arm_ratio > 2.0:
+            return False
+
+        if self.last_stable_kpts is not None:
+            prev_lengths = self._get_lengths(self.last_stable_kpts)
+            for key in lengths:
+                prev_val = prev_lengths[key]
+                curr_val = lengths[key]
+                if prev_val > 1e-6:
+                    change_ratio = abs(curr_val - prev_val) / prev_val
+                    if change_ratio > self.MAX_LENGTH_CHANGE_RATIO:
+                        return False
+
+        return True
+
+    def _has_sudden_jump(self, kpts):
+        if self.last_stable_kpts is None:
+            return False
+
+        torso_ids = [0, 5, 6, 11, 12]
+        arm_ids = [7, 8, 9, 10]
+
+        for idx in torso_ids:
+            curr = np.array(kpts[idx][:2], dtype=np.float32)
+            prev = np.array(self.last_stable_kpts[idx][:2], dtype=np.float32)
+            if np.linalg.norm(curr - prev) > self.MAX_SHOULDER_HIP_JUMP:
+                return True
+
+        for idx in arm_ids:
+            curr = np.array(kpts[idx][:2], dtype=np.float32)
+            prev = np.array(self.last_stable_kpts[idx][:2], dtype=np.float32)
+            if np.linalg.norm(curr - prev) > self.MAX_ARM_JUMP:
+                return True
+
+        return False
+
+    def _is_reliable_detection(self, kpts, kpt_conf):
+        if not self._has_required_points(kpt_conf):
+            return False
+        if not self._points_in_range(kpts):
+            return False
+        if not self._has_reasonable_lengths(kpts):
+            return False
+        if self._has_sudden_jump(kpts):
+            return False
+        return True
+
+    def _update_smoothing(self, kpts):
+        if self.smoothed_kpts is None:
+            self.smoothed_kpts = np.copy(kpts)
+        else:
+            self.smoothed_kpts = (
+                self.SMOOTHING_ALPHA * np.copy(kpts)
+                + (1.0 - self.SMOOTHING_ALPHA) * self.smoothed_kpts
             )
 
-            cv2.putText(image, feedback, (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
-            cv2.putText(
-                image,
-                f"Count: {self.count}",
-                (w - 280, 70),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1.5,
-                (0, 255, 255),
-                3,
-            )
-            return 0.0, feedback, None
+    def _draw_pose(self, kpts, image):
+        h, w, _ = image.shape
 
         nose = [kpts[0][0], kpts[0][1]]
 
@@ -207,7 +315,6 @@ class BicepCurlAnalyzer(ExerciseAnalyzer):
         ]
         nose_pt = (int(nose[0] * w), int(nose[1] * h))
 
-        # 뼈대 시각화
         cv2.line(image, l_pts[3], l_pts[0], (0, 255, 0), 3)
         cv2.line(image, l_pts[0], l_pts[1], (0, 255, 0), 3)
         cv2.line(image, l_pts[1], l_pts[2], (0, 255, 0), 3)
@@ -219,15 +326,102 @@ class BicepCurlAnalyzer(ExerciseAnalyzer):
         for pt in l_pts + r_pts + [nose_pt]:
             cv2.circle(image, pt, 8, (0, 0, 255), -1)
 
-        # 팔꿈치 각도
+        mid_x = int((l_pts[2][0] + r_pts[2][0]) / 2)
+        mid_y = int((l_pts[2][1] + r_pts[2][1]) / 2)
+        cv2.circle(image, (mid_x, mid_y), 10, (0, 255, 255), -1)
+
+        return {
+            "mid_pixel": (mid_x, mid_y)
+        }
+
+    def analyze(self, kpts, image, kpt_conf=None):
+        h, w, _ = image.shape
+
+        reliable = self._is_reliable_detection(kpts, kpt_conf)
+
+        if reliable:
+            self.missing_streak = 0
+            self.last_stable_kpts = np.copy(kpts)
+            self._update_smoothing(kpts)
+            active_kpts = self.smoothed_kpts
+
+        else:
+            self.missing_streak += 1
+
+            if self.smoothed_kpts is not None and self.missing_streak <= self.MISSING_GRACE_FRAMES:
+                self._draw_pose(self.smoothed_kpts, image)
+
+                feedback = "Tracking unstable..."
+                color = (0, 255, 255)
+
+                cv2.putText(image, feedback, (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+                cv2.putText(
+                    image,
+                    f"Count: {self.count}",
+                    (w - 280, 70),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    1.5,
+                    (0, 255, 255),
+                    3,
+                )
+
+                self.logger.update_frame(
+                    elbow_angle=None,
+                    upper_arm_angle=None,
+                    trunk_angle=None,
+                    feedback=feedback,
+                    is_correct=False,
+                    has_valid_measurement=False,
+                    count_warning=False,
+                )
+                return None, feedback, None
+
+            feedback = "Warning: Keep both arms visible!"
+            color = (0, 0, 255)
+
+            cv2.putText(image, feedback, (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+            cv2.putText(
+                image,
+                f"Count: {self.count}",
+                (w - 280, 70),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1.5,
+                (0, 255, 255),
+                3,
+            )
+
+            self.logger.update_frame(
+                elbow_angle=None,
+                upper_arm_angle=None,
+                trunk_angle=None,
+                feedback=feedback,
+                is_correct=False,
+                has_valid_measurement=False,
+                count_warning=True,
+            )
+            return None, feedback, None
+
+        # ===== 안정적인 프레임만 여기부터 분석 =====
+        draw_info = self._draw_pose(active_kpts, image)
+
+        nose = [active_kpts[0][0], active_kpts[0][1]]
+
+        l_sh = [active_kpts[5][0], active_kpts[5][1]]
+        l_el = [active_kpts[7][0], active_kpts[7][1]]
+        l_wr = [active_kpts[9][0], active_kpts[9][1]]
+        l_hip = [active_kpts[11][0], active_kpts[11][1]]
+
+        r_sh = [active_kpts[6][0], active_kpts[6][1]]
+        r_el = [active_kpts[8][0], active_kpts[8][1]]
+        r_wr = [active_kpts[10][0], active_kpts[10][1]]
+        r_hip = [active_kpts[12][0], active_kpts[12][1]]
+
         l_elbow_angle = self.calculate_angle(l_sh, l_el, l_wr)
         r_elbow_angle = self.calculate_angle(r_sh, r_el, r_wr)
 
-        # 상완이 몸통에서 얼마나 벌어졌는지
         l_upper_arm_angle = self.calculate_angle(l_hip, l_sh, l_el)
         r_upper_arm_angle = self.calculate_angle(r_hip, r_sh, r_el)
 
-        # 몸통 기울기
         mid_hip = [(l_hip[0] + r_hip[0]) / 2.0, (l_hip[1] + r_hip[1]) / 2.0]
         vertical_ref = [mid_hip[0], mid_hip[1] - 0.1]
         trunk_angle = self.calculate_angle(vertical_ref, mid_hip, nose)
@@ -239,7 +433,6 @@ class BicepCurlAnalyzer(ExerciseAnalyzer):
         feedback = "Good Form!"
         color = (0, 255, 0)
 
-        # ===== 잘못된 자세 체크 =====
         if trunk_angle > self.TRUNK_THRESHOLD:
             feedback = "Warning: Keep your body straight!"
             color = (0, 165, 255)
@@ -258,42 +451,61 @@ class BicepCurlAnalyzer(ExerciseAnalyzer):
             color = (0, 0, 255)
             is_correct_posture = False
 
-        # ===== 상태 전환 및 카운팅 =====
         if is_correct_posture:
-            is_down_pose = (
+            is_down_pose_candidate = (
                 l_elbow_angle >= self.DOWN_ELBOW_ANGLE
                 and r_elbow_angle >= self.DOWN_ELBOW_ANGLE
                 and l_upper_arm_angle <= self.UPPER_ARM_THRESHOLD
                 and r_upper_arm_angle <= self.UPPER_ARM_THRESHOLD
             )
 
-            is_up_pose = (
+            is_up_pose_candidate = (
                 l_elbow_angle <= self.UP_ELBOW_ANGLE
                 and r_elbow_angle <= self.UP_ELBOW_ANGLE
-                and l_upper_arm_angle <= self.UPPER_ARM_THRESHOLD + 15
-                and r_upper_arm_angle <= self.UPPER_ARM_THRESHOLD + 15
+                and l_upper_arm_angle <= self.UPPER_ARM_THRESHOLD + 20
+                and r_upper_arm_angle <= self.UPPER_ARM_THRESHOLD + 20
             )
 
-            if is_down_pose:
-                if self.state == "UP":
-                    self.state = "DOWN"
-                feedback = "Ready... Curl UP!"
-                color = (0, 255, 255)
+            if is_down_pose_candidate:
+                self.down_pose_streak += 1
+                self.up_pose_streak = 0
 
-            elif is_up_pose:
-                if self.state == "DOWN":
-                    self.state = "UP"
-                    self.count += 1
-                    self.logger.increment_rep(self.count)
-                feedback = "Great Curl!"
-                color = (255, 0, 0)
+                if self.down_pose_streak >= self.DOWN_CONFIRM_FRAMES:
+                    if self.confirmed_pose_state == "UP":
+                        self.count += 1
+                        self.logger.increment_rep(self.count)
+                    self.confirmed_pose_state = "DOWN"
+                    feedback = "Ready... Curl UP!"
+                    color = (0, 255, 255)
+                else:
+                    feedback = "Lower a bit more!"
+                    color = (255, 255, 255)
+
+            elif is_up_pose_candidate:
+                self.up_pose_streak += 1
+                self.down_pose_streak = 0
+
+                if self.up_pose_streak >= self.UP_CONFIRM_FRAMES:
+                    self.confirmed_pose_state = "UP"
+                    feedback = "Great Curl! Slowly lower your arms!"
+                    color = (255, 0, 0)
+                else:
+                    feedback = "Lift a bit more!"
+                    color = (255, 255, 255)
 
             else:
-                if self.state == "DOWN":
-                    feedback = "Curl the weights up!"
-                else:
+                self.down_pose_streak = 0
+                self.up_pose_streak = 0
+
+                if self.confirmed_pose_state == "UP":
                     feedback = "Slowly lower your arms!"
+                else:
+                    feedback = "Curl the weights up!"
                 color = (255, 255, 255)
+
+        else:
+            self.down_pose_streak = 0
+            self.up_pose_streak = 0
 
         self.logger.update_frame(
             elbow_angle=avg_elbow_angle,
@@ -301,6 +513,8 @@ class BicepCurlAnalyzer(ExerciseAnalyzer):
             trunk_angle=trunk_angle,
             feedback=feedback,
             is_correct=is_correct_posture,
+            has_valid_measurement=True,
+            count_warning=feedback.startswith("Warning:"),
         )
 
         cv2.putText(image, feedback, (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
@@ -341,12 +555,7 @@ class BicepCurlAnalyzer(ExerciseAnalyzer):
             3,
         )
 
-        # 교정 목표점: 양 손목의 중앙점
-        mid_x = int((l_pts[2][0] + r_pts[2][0]) / 2)
-        mid_y = int((l_pts[2][1] + r_pts[2][1]) / 2)
-        cv2.circle(image, (mid_x, mid_y), 10, (0, 255, 255), -1)
-
-        return avg_elbow_angle, feedback, (mid_x, mid_y)
+        return avg_elbow_angle, feedback, draw_info["mid_pixel"]
 
 
 # ==========================================
@@ -423,9 +632,10 @@ class PoseAnalyzerNode(Node):
                 if len(kpts) >= 13:
                     target_angle, feedback, target_pixel = self.current_analyzer.analyze(kpts, image, kpt_conf)
 
-                    angle_msg = Float32()
-                    angle_msg.data = float(target_angle)
-                    self.angle_pub.publish(angle_msg)
+                    if target_angle is not None:
+                        angle_msg = Float32()
+                        angle_msg.data = float(target_angle)
+                        self.angle_pub.publish(angle_msg)
 
                     if target_pixel is not None and self.intrinsics is not None:
                         mid_x, mid_y = target_pixel
