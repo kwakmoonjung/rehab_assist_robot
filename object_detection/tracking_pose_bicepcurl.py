@@ -177,7 +177,7 @@ class BicepCurlAnalyzer(ExerciseAnalyzer):
         # ===== 기준값 =====
         self.TRUNK_THRESHOLD = 15
         self.BALANCE_THRESHOLD = 20
-        self.UPPER_ARM_THRESHOLD = 25
+        self.UPPER_ARM_THRESHOLD = 40
         self.DOWN_ELBOW_ANGLE = 145
         self.UP_ELBOW_ANGLE = 60
 
