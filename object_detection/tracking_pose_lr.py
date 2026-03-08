@@ -5,20 +5,21 @@ from datetime import datetime
 
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import Image, CameraInfo
 from std_msgs.msg import Float32
+from geometry_msgs.msg import Point  # ⭐️ 3D 좌표 퍼블리시용 추가
 from cv_bridge import CvBridge
 import cv2
 import numpy as np
 
-# ⭐️ MediaPipe 대신 YOLO 임포트
+# YOLO 임포트
 from ultralytics import YOLO 
 
 # 로그 파일 저장 경로
 LOG_FILE = os.path.expanduser("~/exercise_session_log.json")
 
 # ==========================================
-# 0. 데이터 로깅 모듈 (기존과 완벽히 동일)
+# 0. 데이터 로깅 모듈 (기존 유지)
 # ==========================================
 class ExerciseSessionLogger:
     def __init__(self, log_file, exercise_type):
@@ -125,21 +126,20 @@ class LateralRaiseAnalyzer(ExerciseAnalyzer):
         self.state = "DOWN"    
         self.logger = ExerciseSessionLogger(LOG_FILE, "lateral_raise")
 
-    # ⭐️ YOLO의 픽셀 좌표(x, y) 데이터를 바로 받습니다.
     def analyze_dual(self, front_kpts, side_kpts, front_img, side_img):
         h, w, _ = front_img.shape
 
         # --- [1. 정면 카메라 데이터 처리] ---
-        # YOLO COCO 관절 인덱스: 어깨(5/6), 팔꿈치(7/8), 골반(11/12)
         l_sh_f = front_kpts[5][:2]
         l_el_f = front_kpts[7][:2]
         l_hip_f = front_kpts[11][:2]
+        l_wr_f = front_kpts[9][:2]   # ⭐️ 왼쪽 손목 추가
 
         r_sh_f = front_kpts[6][:2]
         r_el_f = front_kpts[8][:2]
         r_hip_f = front_kpts[12][:2]
+        r_wr_f = front_kpts[10][:2]  # ⭐️ 오른쪽 손목 추가
 
-        # YOLO는 이미 픽셀 좌표이므로 곱셈(w,h)이 필요 없습니다. 정수형 변환만 수행.
         pts_f = {
             'l_sh': (int(l_sh_f[0]), int(l_sh_f[1])), 'l_el': (int(l_el_f[0]), int(l_el_f[1])),
             'l_hip': (int(l_hip_f[0]), int(l_hip_f[1])), 'r_sh': (int(r_sh_f[0]), int(r_sh_f[1])),
@@ -158,7 +158,6 @@ class LateralRaiseAnalyzer(ExerciseAnalyzer):
 
 
         # --- [2. 측면 카메라 데이터 처리] ---
-        # 측면 기준 인덱스: 어깨(5), 골반(11), 무릎(13) (왼쪽 기준 예시)
         l_sh_s = side_kpts[5][:2]
         l_hip_s = side_kpts[11][:2]
         l_knee_s = side_kpts[13][:2]
@@ -174,7 +173,6 @@ class LateralRaiseAnalyzer(ExerciseAnalyzer):
         for pt in pts_s.values(): cv2.circle(side_img, pt, 8, (0, 0, 255), -1)
 
         trunk_side_angle = self.calculate_angle(l_sh_s, l_hip_s, l_knee_s)
-
 
         # --- [3. 통합 상태 판별 및 카운팅] ---
         is_correct_posture = True
@@ -233,24 +231,35 @@ class LateralRaiseAnalyzer(ExerciseAnalyzer):
         cv2.putText(side_img, f"[SIDE VIEW]", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
         cv2.putText(side_img, f"Trunk Angle: {int(trunk_side_angle)}", (20, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
 
-        return avg_shoulder_angle, feedback
+        # ⭐️ 3D 추적을 위해 두 손목의 픽셀 좌표도 함께 반환
+        return avg_shoulder_angle, feedback, (int(l_wr_f[0]), int(l_wr_f[1])), (int(r_wr_f[0]), int(r_wr_f[1]))
 
 # ==========================================
-# 2. ROS2 듀얼 비전 메인 노드 (YOLO11-Pose 적용)
+# 2. ROS2 듀얼 비전 메인 노드 (YOLO + 3D 퍼블리시)
 # ==========================================
 class PoseTrackingNode(Node):
     def __init__(self, exercise_type='lateral_raise'): 
         super().__init__('pose_tracking_node')
         self.bridge = CvBridge()
         
-        self.create_subscription(Image, '/camera/camera/color/image_raw', self.side_callback, 10) 
-        self.create_subscription(Image, '/m0609_cam/color/image_raw', self.front_callback, 10)    
+        # 1. Color 이미지 구독
+        self.create_subscription(Image, '/fixed/camera/color/image_raw', self.side_callback, 10) 
+        self.create_subscription(Image, '/robot/camera/color/image_raw', self.front_callback, 10)    
+        
+        # 2. Depth & Camera Info 구독 (⭐️ 정면 손목 3D 좌표를 위해 m0609의 Depth 토픽 구독)
+        self.create_subscription(Image, '/robot/camera/aligned_depth_to_color/image_raw', self.depth_callback, 10)
+        self.create_subscription(CameraInfo, '/robot/camera/color/camera_info', self.camera_info_callback, 10)
+        
+        # 3. 퍼블리셔 선언
         self.angle_pub = self.create_publisher(Float32, '/patient_elbow_angle', 10)
+        self.left_wrist_3d_pub = self.create_publisher(Point, '/left_wrist_3d', 10)   # ⭐️ 왼쪽 손목
+        self.right_wrist_3d_pub = self.create_publisher(Point, '/right_wrist_3d', 10) # ⭐️ 오른쪽 손목
         
         self.front_raw = None
         self.side_raw = None
+        self.depth_frame = None
+        self.intrinsics = None
         
-        # ⭐️ YOLO11-Pose 모델 로드 (자동으로 GPU 가속 적용됨)
         self.get_logger().info("YOLOv11-Pose 모델을 로드 중입니다...")
         self.pose_model = YOLO('yolo11n-pose.pt') 
 
@@ -260,9 +269,16 @@ class PoseTrackingNode(Node):
         self.current_analyzer = self.analyzers.get(exercise_type, LateralRaiseAnalyzer())
 
         self.get_logger().info(f"💪 [{exercise_type}] 듀얼 카메라 트레이닝 모드 시작!")
-        self.get_logger().info(f"exercise log path: {LOG_FILE}")
+        self.get_logger().info("🔥 창 클릭 후 [스페이스바]를 누르면 양쪽 손목의 3D 좌표가 발행됩니다!")
 
         self.timer = self.create_timer(0.033, self.display_timer_callback)
+
+    def depth_callback(self, msg):
+        self.depth_frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
+
+    def camera_info_callback(self, msg):
+        if self.intrinsics is None:
+            self.intrinsics = {"fx": msg.k[0], "fy": msg.k[4], "ppx": msg.k[2], "ppy": msg.k[5]}
 
     def front_callback(self, msg):
         try:
@@ -276,40 +292,80 @@ class PoseTrackingNode(Node):
         except Exception as e:
             pass 
 
+    def _pixel_to_camera_coords(self, x, y, z):
+        fx, fy, ppx, ppy = self.intrinsics['fx'], self.intrinsics['fy'], self.intrinsics['ppx'], self.intrinsics['ppy']
+        return ((x - ppx) * z / fx, (y - ppy) * z / fy, z)
+
     def display_timer_callback(self):
         if self.front_raw is not None and self.side_raw is not None:
+            # 해상도 640x480 강제 동기화
             front_img = cv2.resize(self.front_raw, (640, 480))
             side_img = cv2.resize(self.side_raw, (640, 480))
 
-            # ⭐️ YOLO 추론 실행 (verbose=False로 터미널 콘솔창 도배 방지)
             res_front = self.pose_model(front_img, verbose=False)[0]
             res_side = self.pose_model(side_img, verbose=False)[0]
 
-            # 두 카메라 모두에서 사람의 관절(Keypoints)이 추출되었는지 확인
+            left_wrist_3d_coord = None
+            right_wrist_3d_coord = None
+
             if res_front.keypoints is not None and len(res_front.keypoints.data) > 0 and \
                res_side.keypoints is not None and len(res_side.keypoints.data) > 0:
                 
-                # GPU에 있는 텐서 데이터를 CPU용 numpy 배열로 변환
-                # data[0]은 화면에 감지된 여러 사람 중 첫 번째 사람을 의미
                 front_kpts = res_front.keypoints.data[0].cpu().numpy()
                 side_kpts = res_side.keypoints.data[0].cpu().numpy()
 
-                target_angle, feedback = self.current_analyzer.analyze_dual(
-                    front_kpts, 
-                    side_kpts, 
-                    front_img, 
-                    side_img
+                # ⭐️ 분석 실행 및 손목 좌표 언패킹
+                target_angle, feedback, l_wr_pt, r_wr_pt = self.current_analyzer.analyze_dual(
+                    front_kpts, side_kpts, front_img, side_img
                 )
                 
                 angle_msg = Float32()
                 angle_msg.data = float(target_angle)
                 self.angle_pub.publish(angle_msg)
+
+                # ⭐️ 3D 좌표 변환 블록
+                if self.intrinsics is not None and self.depth_frame is not None:
+                    # Color 이미지(640x480)와 좌표를 맞추기 위해 Depth 이미지도 리사이즈 (손실 방지를 위해 NEAREST 적용)
+                    depth_resized = cv2.resize(self.depth_frame, (640, 480), interpolation=cv2.INTER_NEAREST)
+
+                    # 1. 왼쪽 손목 3D 변환
+                    if 0 <= l_wr_pt[0] < 640 and 0 <= l_wr_pt[1] < 480:
+                        l_cz = float(depth_resized[l_wr_pt[1], l_wr_pt[0]])
+                        if l_cz > 0:
+                            l_cx, l_cy, l_cz = self._pixel_to_camera_coords(l_wr_pt[0], l_wr_pt[1], l_cz)
+                            left_wrist_3d_coord = (l_cx, l_cy, l_cz)
+                            cv2.putText(front_img, f"L3D Z:{int(l_cz)}", (l_wr_pt[0] - 40, l_wr_pt[1] - 20), 
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 2)
+                            cv2.circle(front_img, l_wr_pt, 10, (255, 0, 255), -1)
+
+                    # 2. 오른쪽 손목 3D 변환
+                    if 0 <= r_wr_pt[0] < 640 and 0 <= r_wr_pt[1] < 480:
+                        r_cz = float(depth_resized[r_wr_pt[1], r_wr_pt[0]])
+                        if r_cz > 0:
+                            r_cx, r_cy, r_cz = self._pixel_to_camera_coords(r_wr_pt[0], r_wr_pt[1], r_cz)
+                            right_wrist_3d_coord = (r_cx, r_cy, r_cz)
+                            cv2.putText(front_img, f"R3D Z:{int(r_cz)}", (r_wr_pt[0] - 40, r_wr_pt[1] - 20), 
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+                            cv2.circle(front_img, r_wr_pt, 10, (0, 255, 255), -1)
+
             else:
                 cv2.putText(front_img, "Waiting for detection...", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
 
             combined_image = np.hstack((front_img, side_img))
             cv2.imshow('Dual View PT Trainer (YOLOv11-Pose) - [Front | Side]', combined_image)
-            cv2.waitKey(1)
+            
+            # ⭐️ 키보드 이벤트 처리 (스페이스바: 32)
+            key = cv2.waitKey(1) & 0xFF
+            if key == 32:
+                if left_wrist_3d_coord is not None:
+                    l_msg = Point(x=left_wrist_3d_coord[0], y=left_wrist_3d_coord[1], z=left_wrist_3d_coord[2])
+                    self.left_wrist_3d_pub.publish(l_msg)
+                    self.get_logger().info(f"✅ [좌측 손목] 3D 발행: X:{int(l_msg.x)}, Y:{int(l_msg.y)}, Z:{int(l_msg.z)}")
+                
+                if right_wrist_3d_coord is not None:
+                    r_msg = Point(x=right_wrist_3d_coord[0], y=right_wrist_3d_coord[1], z=right_wrist_3d_coord[2])
+                    self.right_wrist_3d_pub.publish(r_msg)
+                    self.get_logger().info(f"✅ [우측 손목] 3D 발행: X:{int(r_msg.x)}, Y:{int(r_msg.y)}, Z:{int(r_msg.z)}")
 
 def main(args=None):
     rclpy.init(args=args)
