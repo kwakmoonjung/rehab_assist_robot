@@ -12,6 +12,10 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 
+# [추가] 서비스 통신을 위한 메시지 임포트
+from std_srvs.srv import SetBool, Trigger
+
+# [원래 경로 유지]
 LOG_FILE = os.path.expanduser("~/exercise_session_log.json")
 
 # ==========================================
@@ -222,13 +226,7 @@ class ShoulderPressAnalyzer(ExerciseAnalyzer):
         cv2.putText(image, f"R Elbow: {int(r_elbow_angle)} | R Shld: {int(r_shoulder_angle)}", (30, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
         cv2.putText(image, f"Count: {self.count}", (w - 280, 70), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 255), 3)
 
-        # 교정 목표점(양 손목의 중앙점) 픽셀 좌표 계산
-        mid_x = int((l_pts[2][0] + r_pts[2][0]) / 2)
-        mid_y = int((l_pts[2][1] + r_pts[2][1]) / 2)
-        
-        cv2.circle(image, (mid_x, mid_y), 10, (0, 255, 255), -1)
-
-        return avg_elbow_angle, feedback, (mid_x, mid_y)
+        return avg_elbow_angle, feedback
 
 
 # ==========================================
@@ -239,13 +237,15 @@ class PoseAnalyzerNode(Node):
         super().__init__('pose_analyzer_node')
         self.bridge = CvBridge()
         
+        # [추가] 상태 관리 변수
+        self.is_exercising = False
+        self.publish_trigger = False
+        
         self.create_subscription(Image, '/camera/camera/color/image_raw', self.image_callback, 10)
         self.create_subscription(Image, '/camera/camera/aligned_depth_to_color/image_raw', self.depth_callback, 10)
         self.create_subscription(CameraInfo, '/camera/camera/color/camera_info', self.camera_info_callback, 10)
         
-        self.angle_pub = self.create_publisher(Float32, '/patient_elbow_angle', 10)  # 디버깅 체크용
-        
-        # [수정] 토픽 이름 변경: /wrist_midpoint_3d -> /target_correction_3d
+        self.angle_pub = self.create_publisher(Float32, '/patient_elbow_angle', 10)
         self.target_3d_pub = self.create_publisher(Point, '/target_correction_3d', 10)
         
         self.model = YOLO('yolo11n-pose.pt')
@@ -254,8 +254,38 @@ class PoseAnalyzerNode(Node):
         self.depth_frame = None
         self.intrinsics = None
 
-        self.get_logger().info(f"🚀 YOLO 자세 분석 및 3D 보정 노드 시작. (스페이스바 누를 시 좌표 발행)")
+        # [추가] 서비스 서버 2개 생성
+        self.srv_set_exercise = self.create_service(SetBool, '/set_exercise_state', self.set_exercise_cb)
+        self.srv_publish_3d = self.create_service(Trigger, '/publish_target_3d', self.publish_3d_cb)
+
+        self.get_logger().info(f"🚀 YOLO 자세 분석 및 3D 보정 노드 시작. (대기 상태)")
         self.get_logger().info(f"📝 운동 로그 경로: {LOG_FILE}")
+
+    # [추가] Service 1 콜백: 운동 분석 On/Off 제어
+    def set_exercise_cb(self, request, response):
+        self.is_exercising = request.data
+        if self.is_exercising:
+            self.current_analyzer.logger.reset() # 새 운동 시작 시 기록 초기화
+            self.current_analyzer.count = 0      # 횟수 초기화
+            self.current_analyzer.state = "UP"
+            msg = "✅ 운동 분석을 시작합니다."
+        else:
+            self.current_analyzer.logger.save()  # 종료 시 최종 기록 저장
+            msg = "⏸️ 운동 분석을 멈추고 대기(IDLE) 상태로 전환합니다."
+        
+        self.get_logger().info(msg)
+        response.success = True
+        response.message = msg
+        return response
+
+    # [추가] Service 2 콜백: 3D 교정 좌표 1회 발행
+    def publish_3d_cb(self, request, response):
+        self.publish_trigger = True
+        msg = "🎯 3D 교정 좌표 발행 요청 수신됨."
+        self.get_logger().info(msg)
+        response.success = True
+        response.message = msg
+        return response
 
     def depth_callback(self, msg):
         self.depth_frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
@@ -279,17 +309,31 @@ class PoseAnalyzerNode(Node):
             results = self.model(image, verbose=False, device='cpu')[0]
             
             target_3d_coord = None       
+            mid_x, mid_y = -1, -1
 
             if results.keypoints is not None and len(results.keypoints.xyn) > 0:
                 kpts = results.keypoints.xyn[0].cpu().numpy()
                 
                 if len(kpts) >= 13: 
-                    # [수정] 불필요한 왼쪽 손목 리턴값 제거
-                    target_angle, feedback, (mid_x, mid_y) = self.current_analyzer.analyze(kpts, image)
+                    # [수정] is_exercising 상태에 따른 분기 처리
+                    if self.is_exercising:
+                        # On 상태: 각도 분석, 카운트, 로깅 및 UI 업데이트
+                        target_angle, feedback = self.current_analyzer.analyze(kpts, image)
+                        
+                        angle_msg = Float32()
+                        angle_msg.data = float(target_angle)
+                        self.angle_pub.publish(angle_msg)
+                    else:
+                        # Off 상태: 대기 모드 UI 표시 (연산 및 로깅 쉼)
+                        cv2.putText(image, "IDLE MODE - Waiting to start", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
                     
-                    angle_msg = Float32()
-                    angle_msg.data = float(target_angle)
-                    self.angle_pub.publish(angle_msg)
+                    # 3D 교정 및 좌표 발행을 위해 중앙점 계산은 항상 수행 (스페이스바 대체용)
+                    h, w, _ = image.shape
+                    l_wr = [kpts[9][0], kpts[9][1]]
+                    r_wr = [kpts[10][0], kpts[10][1]]
+                    mid_x = int((l_wr[0] * w + r_wr[0] * w) / 2)
+                    mid_y = int((l_wr[1] * h + r_wr[1] * h) / 2)
+                    cv2.circle(image, (mid_x, mid_y), 10, (0, 255, 255), -1)
 
                     if self.intrinsics is not None:
                         # 중앙점 3D 좌표 변환
@@ -302,9 +346,10 @@ class PoseAnalyzerNode(Node):
                                             (mid_x - 70, mid_y - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
 
             cv2.imshow('YOLO PT Trainer', image)
-            key = cv2.waitKey(1) & 0xFF
+            cv2.waitKey(1) # [수정] 스페이스바 트리거 삭제
             
-            if key == 32:
+            # [추가] 서비스로 호출되었을 때만 퍼블리시 진행
+            if self.publish_trigger:
                 if target_3d_coord is not None:
                     point_msg = Point()
                     point_msg.x = float(target_3d_coord[0])
@@ -313,7 +358,10 @@ class PoseAnalyzerNode(Node):
                     self.target_3d_pub.publish(point_msg)
                     self.get_logger().info(f"✅ [교정 목표점] 좌표 발행: X:{int(target_3d_coord[0])}, Y:{int(target_3d_coord[1])}, Z:{int(target_3d_coord[2])}")
                 else:
-                    self.get_logger().warn("⚠️ 유효한 3D 좌표가 없습니다.")
+                    self.get_logger().warn("⚠️ 유효한 3D 좌표가 없어 퍼블리시하지 못했습니다.")
+                
+                # 발행 여부와 상관없이 트리거는 1회 동작 후 다시 Off
+                self.publish_trigger = False
             
         except Exception as e:
             self.get_logger().error(f"에러 발생: {e}")
