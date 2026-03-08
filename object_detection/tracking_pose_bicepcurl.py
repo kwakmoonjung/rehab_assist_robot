@@ -129,7 +129,7 @@ class ExerciseSessionLogger:
 
 
 # ==========================================
-# 2. 운동 분석기 모듈 (YOLO Keypoints 적용)
+# 2. 운동 분석기 모듈
 # ==========================================
 class ExerciseAnalyzer:
     def calculate_angle(self, a, b, c):
@@ -148,37 +148,34 @@ class BicepCurlAnalyzer(ExerciseAnalyzer):
 
         # ===== 자세 기준 =====
         self.TRUNK_THRESHOLD = 15
-        self.BALANCE_THRESHOLD = 30
+        self.BALANCE_THRESHOLD = 35
 
-        # 팔꿈치 붙임 기준 완화
-        self.UPPER_ARM_THRESHOLD = 60
+        # 팔꿈치 붙임 기준 더 널널하게
+        self.UPPER_ARM_THRESHOLD = 85
 
-        # 완전히 내려갔을 때만 DOWN으로 인정하도록 강화
+        # 완전히 내려간 뒤에만 1회 완료
         self.DOWN_ELBOW_ANGLE = 160
         self.UP_ELBOW_ANGLE = 60
-
-        # pose confirm frames
         self.DOWN_CONFIRM_FRAMES = 3
         self.UP_CONFIRM_FRAMES = 2
 
-        # 카운트 상태
         self.confirmed_pose_state = "DOWN"
         self.down_pose_streak = 0
         self.up_pose_streak = 0
 
-        # ===== YOLO 오인식 무시용 기준 =====
-        self.KEYPOINT_CONF_THRESHOLD = 0.20
-        self.MISSING_GRACE_FRAMES = 6
-        self.SMOOTHING_ALPHA = 0.60
-        self.MAX_SHOULDER_HIP_JUMP = 0.08
-        self.MAX_ARM_JUMP = 0.12
-        self.MIN_SEGMENT_LENGTH = 0.015
-        self.MAX_SEGMENT_LENGTH = 0.45
-        self.MAX_LENGTH_CHANGE_RATIO = 0.70
+        # ===== YOLO 추적 기준 =====
+        self.KEYPOINT_CONF_THRESHOLD = 0.35
+        self.MISSING_GRACE_FRAMES = 12
+        self.SMOOTHING_ALPHA = 0.65
+
+        # 말도 안 되게 튀는 경우만 무시
+        self.MAX_WRIST_JUMP = 0.28
+        self.MAX_ELBOW_JUMP = 0.24
+        self.MAX_TORSO_JUMP = 0.18
 
         self.missing_streak = 0
         self.smoothed_kpts = None
-        self.last_stable_kpts = None
+        self.last_valid_kpts = None
 
     def _is_visible(self, idx, kpt_conf):
         if kpt_conf is None:
@@ -191,92 +188,6 @@ class BicepCurlAnalyzer(ExerciseAnalyzer):
         required_ids = [0, 5, 6, 7, 8, 9, 10, 11, 12]
         return all(self._is_visible(i, kpt_conf) for i in required_ids)
 
-    def _points_in_range(self, kpts):
-        required_ids = [0, 5, 6, 7, 8, 9, 10, 11, 12]
-        for idx in required_ids:
-            x, y = float(kpts[idx][0]), float(kpts[idx][1])
-            if np.isnan(x) or np.isnan(y):
-                return False
-            if x < 0.0 or x > 1.0 or y < 0.0 or y > 1.0:
-                return False
-        return True
-
-    def _segment_len(self, p1, p2):
-        p1 = np.array(p1[:2], dtype=np.float32)
-        p2 = np.array(p2[:2], dtype=np.float32)
-        return float(np.linalg.norm(p1 - p2))
-
-    def _get_lengths(self, kpts):
-        return {
-            "l_upper": self._segment_len(kpts[5], kpts[7]),
-            "l_lower": self._segment_len(kpts[7], kpts[9]),
-            "r_upper": self._segment_len(kpts[6], kpts[8]),
-            "r_lower": self._segment_len(kpts[8], kpts[10]),
-            "l_torso": self._segment_len(kpts[5], kpts[11]),
-            "r_torso": self._segment_len(kpts[6], kpts[12]),
-        }
-
-    def _has_reasonable_lengths(self, kpts):
-        lengths = self._get_lengths(kpts)
-
-        for seg_len in lengths.values():
-            if seg_len < self.MIN_SEGMENT_LENGTH or seg_len > self.MAX_SEGMENT_LENGTH:
-                return False
-
-        left_arm_total = lengths["l_upper"] + lengths["l_lower"]
-        right_arm_total = lengths["r_upper"] + lengths["r_lower"]
-
-        if min(left_arm_total, right_arm_total) <= 1e-6:
-            return False
-
-        arm_ratio = max(left_arm_total, right_arm_total) / min(left_arm_total, right_arm_total)
-        if arm_ratio > 2.0:
-            return False
-
-        if self.last_stable_kpts is not None:
-            prev_lengths = self._get_lengths(self.last_stable_kpts)
-            for key in lengths:
-                prev_val = prev_lengths[key]
-                curr_val = lengths[key]
-                if prev_val > 1e-6:
-                    change_ratio = abs(curr_val - prev_val) / prev_val
-                    if change_ratio > self.MAX_LENGTH_CHANGE_RATIO:
-                        return False
-
-        return True
-
-    def _has_sudden_jump(self, kpts):
-        if self.last_stable_kpts is None:
-            return False
-
-        torso_ids = [0, 5, 6, 11, 12]
-        arm_ids = [7, 8, 9, 10]
-
-        for idx in torso_ids:
-            curr = np.array(kpts[idx][:2], dtype=np.float32)
-            prev = np.array(self.last_stable_kpts[idx][:2], dtype=np.float32)
-            if np.linalg.norm(curr - prev) > self.MAX_SHOULDER_HIP_JUMP:
-                return True
-
-        for idx in arm_ids:
-            curr = np.array(kpts[idx][:2], dtype=np.float32)
-            prev = np.array(self.last_stable_kpts[idx][:2], dtype=np.float32)
-            if np.linalg.norm(curr - prev) > self.MAX_ARM_JUMP:
-                return True
-
-        return False
-
-    def _is_reliable_detection(self, kpts, kpt_conf):
-        if not self._has_required_points(kpt_conf):
-            return False
-        if not self._points_in_range(kpts):
-            return False
-        if not self._has_reasonable_lengths(kpts):
-            return False
-        if self._has_sudden_jump(kpts):
-            return False
-        return True
-
     def _update_smoothing(self, kpts):
         if self.smoothed_kpts is None:
             self.smoothed_kpts = np.copy(kpts)
@@ -285,6 +196,35 @@ class BicepCurlAnalyzer(ExerciseAnalyzer):
                 self.SMOOTHING_ALPHA * np.copy(kpts)
                 + (1.0 - self.SMOOTHING_ALPHA) * self.smoothed_kpts
             )
+
+    def _has_impossible_jump(self, kpts):
+        if self.last_valid_kpts is None:
+            return False
+
+        # torso는 조금만, 팔은 좀 더 크게 허용
+        torso_ids = [0, 5, 6, 11, 12]
+        elbow_ids = [7, 8]
+        wrist_ids = [9, 10]
+
+        for idx in torso_ids:
+            curr = np.array(kpts[idx][:2], dtype=np.float32)
+            prev = np.array(self.last_valid_kpts[idx][:2], dtype=np.float32)
+            if np.linalg.norm(curr - prev) > self.MAX_TORSO_JUMP:
+                return True
+
+        for idx in elbow_ids:
+            curr = np.array(kpts[idx][:2], dtype=np.float32)
+            prev = np.array(self.last_valid_kpts[idx][:2], dtype=np.float32)
+            if np.linalg.norm(curr - prev) > self.MAX_ELBOW_JUMP:
+                return True
+
+        for idx in wrist_ids:
+            curr = np.array(kpts[idx][:2], dtype=np.float32)
+            prev = np.array(self.last_valid_kpts[idx][:2], dtype=np.float32)
+            if np.linalg.norm(curr - prev) > self.MAX_WRIST_JUMP:
+                return True
+
+        return False
 
     def _draw_pose(self, kpts, image):
         h, w, _ = image.shape
@@ -330,35 +270,42 @@ class BicepCurlAnalyzer(ExerciseAnalyzer):
         mid_y = int((l_pts[2][1] + r_pts[2][1]) / 2)
         cv2.circle(image, (mid_x, mid_y), 10, (0, 255, 255), -1)
 
-        return {
-            "mid_pixel": (mid_x, mid_y)
-        }
+        return {"mid_pixel": (mid_x, mid_y)}
 
     def analyze(self, kpts, image, kpt_conf=None):
-        h, w, _ = image.shape
+        visible_now = self._has_required_points(kpt_conf)
+        impossible_jump = False
 
-        reliable = self._is_reliable_detection(kpts, kpt_conf)
+        if visible_now:
+            impossible_jump = self._has_impossible_jump(kpts)
+
+        reliable = visible_now and (not impossible_jump)
 
         if reliable:
             self.missing_streak = 0
-            self.last_stable_kpts = np.copy(kpts)
+            self.last_valid_kpts = np.copy(kpts)
             self._update_smoothing(kpts)
             active_kpts = self.smoothed_kpts
 
         else:
             self.missing_streak += 1
 
+            # 최근 정상 프레임 잠깐 유지
             if self.smoothed_kpts is not None and self.missing_streak <= self.MISSING_GRACE_FRAMES:
-                self._draw_pose(self.smoothed_kpts, image)
+                draw_info = self._draw_pose(self.smoothed_kpts, image)
 
-                feedback = "Tracking unstable..."
+                if impossible_jump:
+                    feedback = "Tracking... jump ignored"
+                else:
+                    feedback = "Tracking..."
+
                 color = (0, 255, 255)
 
                 cv2.putText(image, feedback, (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
                 cv2.putText(
                     image,
                     f"Count: {self.count}",
-                    (w - 280, 70),
+                    (image.shape[1] - 280, 70),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     1.5,
                     (0, 255, 255),
@@ -374,7 +321,7 @@ class BicepCurlAnalyzer(ExerciseAnalyzer):
                     has_valid_measurement=False,
                     count_warning=False,
                 )
-                return None, feedback, None
+                return None, feedback, draw_info["mid_pixel"]
 
             feedback = "Warning: Keep both arms visible!"
             color = (0, 0, 255)
@@ -383,7 +330,7 @@ class BicepCurlAnalyzer(ExerciseAnalyzer):
             cv2.putText(
                 image,
                 f"Count: {self.count}",
-                (w - 280, 70),
+                (image.shape[1] - 280, 70),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 1.5,
                 (0, 255, 255),
@@ -401,7 +348,6 @@ class BicepCurlAnalyzer(ExerciseAnalyzer):
             )
             return None, feedback, None
 
-        # ===== 안정적인 프레임만 여기부터 분석 =====
         draw_info = self._draw_pose(active_kpts, image)
 
         nose = [active_kpts[0][0], active_kpts[0][1]]
@@ -443,10 +389,7 @@ class BicepCurlAnalyzer(ExerciseAnalyzer):
             color = (0, 0, 255)
             is_correct_posture = False
 
-        elif (
-            l_upper_arm_angle > self.UPPER_ARM_THRESHOLD
-            or r_upper_arm_angle > self.UPPER_ARM_THRESHOLD
-        ):
+        elif l_upper_arm_angle > self.UPPER_ARM_THRESHOLD or r_upper_arm_angle > self.UPPER_ARM_THRESHOLD:
             feedback = "Warning: Keep elbows close to body!"
             color = (0, 0, 255)
             is_correct_posture = False
@@ -502,7 +445,6 @@ class BicepCurlAnalyzer(ExerciseAnalyzer):
                 else:
                     feedback = "Curl the weights up!"
                 color = (255, 255, 255)
-
         else:
             self.down_pose_streak = 0
             self.up_pose_streak = 0
