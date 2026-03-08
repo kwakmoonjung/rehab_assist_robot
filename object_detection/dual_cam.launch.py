@@ -21,23 +21,34 @@ def generate_launch_description():
         'pointcloud.enable': 'true'
     }
 
-    # 1. 정면 로봇 카메라 (Robot Cam)
+    # ⭐️ [수정] USB 2.1 연결 카메라용 해상도 설정 (기능은 모두 true로, 데이터량은 최소로!)
+    fixed_override_args = {
+        'depth_module.depth_profile': '640x480x15', # USB 2.1 한계 타협점 (15 프레임)
+        'rgb_camera.color_profile': '640x480x15',   # USB 2.1 한계 타협점 (15 프레임)
+        'enable_depth': 'true',          # 요청대로 복구
+        'align_depth.enable': 'true',    # 요청대로 복구
+        'enable_rgbd': 'true',           # 요청대로 복구
+        'pointcloud.enable': 'true'      # 요청대로 복구
+    }
+
+    # 1. 정면 로봇 카메라 (Robot Cam - USB 3.0 연결 권장)
     robot_cam = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(rs_launch_file),
         launch_arguments={
             **common_args,
-            'serial_no': '_141722076528',  # ⭐️ 문자열 인식을 위해 앞에 _ 추가
+            'serial_no': '_141722076528',
             'camera_namespace': 'robot',
             'camera_name': 'camera'
         }.items()
     )
 
-    # 2. 측면 고정 카메라 (Fixed Cam)
+    # 2. 측면 고정 카메라 (Fixed Cam - USB 2.1 연결)
     fixed_cam = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(rs_launch_file),
         launch_arguments={
             **common_args,
-            'serial_no': '_215322078366',  # ⭐️ 문자열 인식을 위해 앞에 _ 추가
+            **fixed_override_args,  # 고정 카메라 해상도 덮어쓰기 적용
+            'serial_no': '_215322078366',
             'camera_namespace': 'fixed',
             'camera_name': 'camera'
         }.items()

@@ -44,6 +44,7 @@ setup(
             'shoulder = object_detection.tracking_pose_shoulderpress:main',
             'bicep = object_detection.tracking_pose_bicepcurl:main',
             'test2 = voice_processing.get_keyword_Test:main',
+            'lr = object_detection.tracking_pose_lr:main',
         ],
     },
 )

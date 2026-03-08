@@ -5,9 +5,10 @@ from datetime import datetime
 
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data # [추가] QoS 프로필 임포트
 from sensor_msgs.msg import Image, CameraInfo
 from std_msgs.msg import Float32
-from geometry_msgs.msg import Point  # ⭐️ 3D 좌표 퍼블리시용 추가
+from geometry_msgs.msg import Point
 from cv_bridge import CvBridge
 import cv2
 import numpy as np
@@ -133,12 +134,12 @@ class LateralRaiseAnalyzer(ExerciseAnalyzer):
         l_sh_f = front_kpts[5][:2]
         l_el_f = front_kpts[7][:2]
         l_hip_f = front_kpts[11][:2]
-        l_wr_f = front_kpts[9][:2]   # ⭐️ 왼쪽 손목 추가
+        l_wr_f = front_kpts[9][:2]   
 
         r_sh_f = front_kpts[6][:2]
         r_el_f = front_kpts[8][:2]
         r_hip_f = front_kpts[12][:2]
-        r_wr_f = front_kpts[10][:2]  # ⭐️ 오른쪽 손목 추가
+        r_wr_f = front_kpts[10][:2]  
 
         pts_f = {
             'l_sh': (int(l_sh_f[0]), int(l_sh_f[1])), 'l_el': (int(l_el_f[0]), int(l_el_f[1])),
@@ -231,7 +232,6 @@ class LateralRaiseAnalyzer(ExerciseAnalyzer):
         cv2.putText(side_img, f"[SIDE VIEW]", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
         cv2.putText(side_img, f"Trunk Angle: {int(trunk_side_angle)}", (20, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
 
-        # ⭐️ 3D 추적을 위해 두 손목의 픽셀 좌표도 함께 반환
         return avg_shoulder_angle, feedback, (int(l_wr_f[0]), int(l_wr_f[1])), (int(r_wr_f[0]), int(r_wr_f[1]))
 
 # ==========================================
@@ -242,18 +242,19 @@ class PoseTrackingNode(Node):
         super().__init__('pose_tracking_node')
         self.bridge = CvBridge()
         
+        # [수정] 10을 qos_profile_sensor_data로 변경
         # 1. Color 이미지 구독
-        self.create_subscription(Image, '/fixed/camera/color/image_raw', self.side_callback, 10) 
-        self.create_subscription(Image, '/robot/camera/color/image_raw', self.front_callback, 10)    
+        self.create_subscription(Image, '/fixed/camera/color/image_raw', self.side_callback, qos_profile_sensor_data) 
+        self.create_subscription(Image, '/robot/camera/color/image_raw', self.front_callback, qos_profile_sensor_data)    
         
-        # 2. Depth & Camera Info 구독 (⭐️ 정면 손목 3D 좌표를 위해 m0609의 Depth 토픽 구독)
-        self.create_subscription(Image, '/robot/camera/aligned_depth_to_color/image_raw', self.depth_callback, 10)
-        self.create_subscription(CameraInfo, '/robot/camera/color/camera_info', self.camera_info_callback, 10)
+        # 2. Depth & Camera Info 구독
+        self.create_subscription(Image, '/robot/camera/aligned_depth_to_color/image_raw', self.depth_callback, qos_profile_sensor_data)
+        self.create_subscription(CameraInfo, '/robot/camera/color/camera_info', self.camera_info_callback, qos_profile_sensor_data)
         
         # 3. 퍼블리셔 선언
         self.angle_pub = self.create_publisher(Float32, '/patient_elbow_angle', 10)
-        self.left_wrist_3d_pub = self.create_publisher(Point, '/left_wrist_3d', 10)   # ⭐️ 왼쪽 손목
-        self.right_wrist_3d_pub = self.create_publisher(Point, '/right_wrist_3d', 10) # ⭐️ 오른쪽 손목
+        self.left_wrist_3d_pub = self.create_publisher(Point, '/left_wrist_3d', 10)   
+        self.right_wrist_3d_pub = self.create_publisher(Point, '/right_wrist_3d', 10) 
         
         self.front_raw = None
         self.side_raw = None
@@ -268,8 +269,8 @@ class PoseTrackingNode(Node):
         }
         self.current_analyzer = self.analyzers.get(exercise_type, LateralRaiseAnalyzer())
 
-        self.get_logger().info(f"💪 [{exercise_type}] 듀얼 카메라 트레이닝 모드 시작!")
-        self.get_logger().info("🔥 창 클릭 후 [스페이스바]를 누르면 양쪽 손목의 3D 좌표가 발행됩니다!")
+        self.get_logger().info(f" [{exercise_type}] 듀얼 카메라 트레이닝 모드 시작!")
+        self.get_logger().info(" 창 클릭 후 [스페이스바]를 누르면 양쪽 손목의 3D 좌표가 발행됩니다!")
 
         self.timer = self.create_timer(0.033, self.display_timer_callback)
 
@@ -314,7 +315,6 @@ class PoseTrackingNode(Node):
                 front_kpts = res_front.keypoints.data[0].cpu().numpy()
                 side_kpts = res_side.keypoints.data[0].cpu().numpy()
 
-                # ⭐️ 분석 실행 및 손목 좌표 언패킹
                 target_angle, feedback, l_wr_pt, r_wr_pt = self.current_analyzer.analyze_dual(
                     front_kpts, side_kpts, front_img, side_img
                 )
@@ -323,12 +323,9 @@ class PoseTrackingNode(Node):
                 angle_msg.data = float(target_angle)
                 self.angle_pub.publish(angle_msg)
 
-                # ⭐️ 3D 좌표 변환 블록
                 if self.intrinsics is not None and self.depth_frame is not None:
-                    # Color 이미지(640x480)와 좌표를 맞추기 위해 Depth 이미지도 리사이즈 (손실 방지를 위해 NEAREST 적용)
                     depth_resized = cv2.resize(self.depth_frame, (640, 480), interpolation=cv2.INTER_NEAREST)
 
-                    # 1. 왼쪽 손목 3D 변환
                     if 0 <= l_wr_pt[0] < 640 and 0 <= l_wr_pt[1] < 480:
                         l_cz = float(depth_resized[l_wr_pt[1], l_wr_pt[0]])
                         if l_cz > 0:
@@ -338,7 +335,6 @@ class PoseTrackingNode(Node):
                                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 2)
                             cv2.circle(front_img, l_wr_pt, 10, (255, 0, 255), -1)
 
-                    # 2. 오른쪽 손목 3D 변환
                     if 0 <= r_wr_pt[0] < 640 and 0 <= r_wr_pt[1] < 480:
                         r_cz = float(depth_resized[r_wr_pt[1], r_wr_pt[0]])
                         if r_cz > 0:
@@ -354,18 +350,17 @@ class PoseTrackingNode(Node):
             combined_image = np.hstack((front_img, side_img))
             cv2.imshow('Dual View PT Trainer (YOLOv11-Pose) - [Front | Side]', combined_image)
             
-            # ⭐️ 키보드 이벤트 처리 (스페이스바: 32)
             key = cv2.waitKey(1) & 0xFF
             if key == 32:
                 if left_wrist_3d_coord is not None:
                     l_msg = Point(x=left_wrist_3d_coord[0], y=left_wrist_3d_coord[1], z=left_wrist_3d_coord[2])
                     self.left_wrist_3d_pub.publish(l_msg)
-                    self.get_logger().info(f"✅ [좌측 손목] 3D 발행: X:{int(l_msg.x)}, Y:{int(l_msg.y)}, Z:{int(l_msg.z)}")
+                    self.get_logger().info(f"[좌측 손목] 3D 발행: X:{int(l_msg.x)}, Y:{int(l_msg.y)}, Z:{int(l_msg.z)}")
                 
                 if right_wrist_3d_coord is not None:
                     r_msg = Point(x=right_wrist_3d_coord[0], y=right_wrist_3d_coord[1], z=right_wrist_3d_coord[2])
                     self.right_wrist_3d_pub.publish(r_msg)
-                    self.get_logger().info(f"✅ [우측 손목] 3D 발행: X:{int(r_msg.x)}, Y:{int(r_msg.y)}, Z:{int(r_msg.z)}")
+                    self.get_logger().info(f"[우측 손목] 3D 발행: X:{int(r_msg.x)}, Y:{int(r_msg.y)}, Z:{int(r_msg.z)}")
 
 def main(args=None):
     rclpy.init(args=args)
