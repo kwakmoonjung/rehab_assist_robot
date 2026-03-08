@@ -32,9 +32,9 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'robot_control = robot_control.robot_control:main',
-            'object_detection = object_detection.detection:main',
-            'get_keyword = voice_processing.get_keyword:main',
+            'posture_corrector = robot_control.posture_corrector:main',
+            'pose_analyzer = object_detection.pose_analyzer:main',
+            'voice_assistant = voice_processing.voice_assistant:main',
         ],
     },
 )
