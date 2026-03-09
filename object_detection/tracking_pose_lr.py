@@ -5,7 +5,7 @@ from datetime import datetime
 
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import qos_profile_sensor_data
+from rclpy.qos import qos_profile_sensor_data # [추가] QoS 프로필 임포트
 from sensor_msgs.msg import Image, CameraInfo
 from std_msgs.msg import Float32
 from geometry_msgs.msg import Point
@@ -54,8 +54,8 @@ class ExerciseSessionLogger:
         self.last_l_wr_y = None   
         self.last_r_wr_y = None
         
-        # 성공한 횟수의 최고 각도 모음 (평균 계산용)
-        self.successful_peaks = []
+        self.successful_peaks = [] # 완벽한 정자세 횟수의 최고 각도 모음
+        self.all_peaks = []        # [신규] 자세 성공 여부 상관없이 모든 횟수의 최고 각도 모음
         
         self.l_z_history = []
         self.r_z_history = []
@@ -148,9 +148,15 @@ class ExerciseSessionLogger:
         session_duration = round((datetime.now() - self.session_start_dt).total_seconds(), 2)
         avg_rep_dur = round(sum(self.rep_durations) / len(self.rep_durations), 2) if self.rep_durations else 0.0
 
+        # 성공한 횟수들의 평균 각도
         avg_successful_peak = 0.0
         if self.successful_peaks:
             avg_successful_peak = round(sum(self.successful_peaks) / len(self.successful_peaks), 2)
+
+        # [신규] 전체 횟수들의 평균 각도 계산
+        avg_all_peak = 0.0
+        if self.all_peaks:
+            avg_all_peak = round(sum(self.all_peaks) / len(self.all_peaks), 2)
 
         assist_trigger_angle = max(0.0, self.pure_arom - 5.0) if self.pure_arom > 0 else 0.0
         target_prom = min(90.0, self.pure_arom + 10.0) if self.pure_arom > 0 else 0.0
@@ -167,7 +173,8 @@ class ExerciseSessionLogger:
                 "target_prom": target_prom
             },
             "elderly_pt_metrics": {
-                "avg_successful_peak_angle": avg_successful_peak, 
+                "avg_successful_peak_angle": avg_successful_peak, # 완벽한 자세 평균 도달 각도
+                "avg_all_peak_angle": avg_all_peak,               # [신규] 자세 무관 전체 횟수 평균 도달 각도
                 "max_rom_left": self.max_rom_left,       
                 "max_rom_right": self.max_rom_right,     
                 "avg_rep_duration_sec": avg_rep_dur,     
@@ -283,7 +290,7 @@ class LateralRaiseAnalyzer(ExerciseAnalyzer):
         if not is_correct_posture:
             self.rep_has_warning = True
 
-        # [업데이트] 3단계 상태 머신 적용 (DOWN -> RAISING -> LOWERING)
+        # 3단계 상태 머신 적용 (DOWN -> RAISING -> LOWERING)
         is_down_pose = (l_shoulder_angle < 40) and (r_shoulder_angle < 40)
 
         if self.state == "DOWN":
@@ -308,9 +315,13 @@ class LateralRaiseAnalyzer(ExerciseAnalyzer):
             if avg_shoulder_angle < self.current_rep_peak - 5.0:
                 self.state = "LOWERING"
                 
-                # 이 찰나의 순간에 즉시 평가 및 DB 저장 진행!
+                # [기존] 이 찰나의 순간에 즉시 평가 및 DB 저장 진행 (성공한 횟수)
                 if not self.rep_has_warning and self.current_rep_peak >= 70.0:
                     self.logger.successful_peaks.append(round(float(self.current_rep_peak), 2))
+                    
+                # [신규] 자세 붕괴 및 경고 여부와 상관없이 무조건 1회 사이클 최고점 기록 (전체 평균용)
+                if self.current_rep_peak >= 40.0:
+                    self.logger.all_peaks.append(round(float(self.current_rep_peak), 2))
                 
                 if self.current_rep_peak >= 80:
                     self.count += 1
