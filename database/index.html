@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Rehab UI</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="container-fluid px-4 py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="header-title"><i class="fas fa-robot text-primary"></i> Silver Health Club</h2>
+            <p class="text-muted mb-0 fw-bold" id="sys_subtitle">대기 중... 운동을 선택해주세요.</p> 
+        </div>
+        <div class="d-flex align-items-center">
+            <span class="badge bg-secondary p-2 fs-6 me-3" id="connection-status">
+                <i class="fas fa-spinner fa-spin"></i> 연결 대기 중...
+            </span>
+            <button id="btn_toggle_admin" class="btn btn-outline-secondary btn-lg" title="엔지니어링 지표 보기">
+                <i class="fas fa-cog"></i>
+            </button>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm" style="border-left: 6px solid #1E90FF; border-radius: 10px;">
+                <div class="card-body d-flex align-items-center justify-content-between py-3">
+                    <div class="d-flex align-items-center w-50">
+                        <i class="fas fa-running fs-2 text-secondary me-3"></i>
+                        <select id="exercise_selector" class="form-select form-select-lg fw-bold" style="border-color: #bdbdbd; font-size: 1.2rem;">
+                            <option value="" selected disabled>운동을 선택해주세요</option>
+                            <option value="lateral_raise">사레레 (Lateral Raise)</option>
+                            <option value="shoulder_press">숄더 프레스 (Shoulder Press)</option>
+                            <option value="bicep_curl">바벨 이두컬 (Bicep Curl)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <button id="btn_start_exercise" class="btn btn-primary btn-lg fw-bold px-4 me-2" style="background-color: #1E90FF; border: none;">
+                            <i class="fas fa-play"></i> 운동 시작
+                        </button>
+                        <button id="btn_stop_exercise" class="btn btn-danger btn-lg fw-bold px-4 me-2">
+                            <i class="fas fa-stop"></i> 정지
+                        </button>
+                        <button id="btn_reset_exercise" class="btn btn-secondary btn-lg fw-bold px-4">
+                            <i class="fas fa-undo"></i> 처음으로
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-lg-6">
+            <div class="card h-100 text-center" style="border: 3px solid #bdbdbd;">
+                <div class="card-header bg-dark text-white fs-4"><i class="fas fa-dumbbell"></i> 현재 운동 횟수</div>
+                <div class="card-body d-flex flex-column justify-content-center align-items-center">
+                    <div class="display-1 fw-bold text-blue muscle-pump" id="rep_count_main" style="font-size: 8rem;">0</div>
+                    <div class="row w-100 mt-4 border-top pt-3">
+                        <div class="col-6 border-end">
+                            <span class="text-muted fs-5" id="main_metric_label_left">좌측 최고 도달</span><br>
+                            <span class="fs-2 fw-bold text-dark"><span id="main_max_rom_left">0</span>&deg;</span>
+                        </div>
+                        <div class="col-6">
+                            <span class="text-muted fs-5" id="main_metric_label_right">우측 최고 도달</span><br>
+                            <span class="fs-2 fw-bold text-dark"><span id="main_max_rom_right">0</span>&deg;</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-6">
+            <div class="card h-100 text-center" style="border: 3px solid #bdbdbd;">
+                <div class="card-header bg-dark text-white fs-4"><i class="fas fa-comment-medical"></i> 실시간 AI 트레이너</div>
+                <div class="card-body d-flex flex-column justify-content-center align-items-center">
+                    <div class="alert w-100 fs-1 fw-bold py-5" style="background-color: #e3f2fd; color: #0d47a1;" id="main_feedback">
+                        "대기 중입니다..."
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-header bg-dark text-white" id="chart_title"><i class="fas fa-chart-line text-info"></i> 실시간 관절 궤적 (L: 5-7-11 / R: 6-8-12)</div>
+                <div class="card-body">
+                    <div style="height: 300px;">
+                        <canvas id="jointAngleChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="admin_panel" style="display: none;">
+        <hr class="my-4">
+        <h4 class="text-secondary mb-3 fw-bold"><i class="fas fa-cogs"></i> 엔지니어링 & DB 저장 지표 (Admin Only)</h4>
+        <div class="row g-4">
+            <div class="col-lg-4">
+                <div class="card h-100 border-primary" style="border-width: 2px;">
+                    <div class="card-header text-primary"><i class="fas fa-cogs"></i> Robot Assist Parameters</div>
+                    <div class="card-body">
+                        <div class="mb-3 text-center">
+                            <small class="text-muted fw-bold">로봇 목표 교정 각도 (Target PROM)</small>
+                            <div class="metric-value text-blue"><span id="target_prom">0</span>&deg;</div>
+                        </div>
+                        <div class="row text-center mt-4">
+                            <div class="col-6 border-end">
+                                <small class="text-muted">보조 개입 시작점</small><br>
+                                <span class="fs-4 fw-bold" id="assist_trigger_angle">0</span>&deg;
+                            </div>
+                            <div class="col-6">
+                                <small class="text-muted">순수 자력 가동범위</small><br>
+                                <span class="fs-4 fw-bold" id="pure_arom">0</span>&deg;
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <div class="card h-100">
+                    <div class="card-header text-success"><i class="fas fa-user-md"></i> Elderly PT Metrics</div>
+                    <div class="card-body text-center">
+                        <div class="row mb-3">
+                            <div class="col-6 border-end">
+                                <small class="text-muted" id="metric_label_1">완벽 자세 평균 도달</small>
+                                <div class="metric-value text-green fs-2"><span id="metric_val_1">0.0</span>&deg;</div>
+                            </div>
+                            <div class="col-6">
+                                <small class="text-muted" id="metric_label_2">전체 시도 평균 도달</small>
+                                <div class="metric-value text-secondary fs-2"><span id="metric_val_2">0.0</span>&deg;</div>
+                            </div>
+                        </div>
+                        <div class="row bg-light rounded p-2">
+                            <div class="col-4 border-end">
+                                <small class="text-muted d-block" id="metric_label_3">좌측 최고</small>
+                                <span class="fw-bold" id="metric_val_3">0&deg;</span>
+                            </div>
+                            <div class="col-4 border-end">
+                                <small class="text-muted d-block" id="metric_label_4">우측 최고</small>
+                                <span class="fw-bold" id="metric_val_4">0&deg;</span>
+                            </div>
+                            <div class="col-4">
+                                <small class="text-muted d-block" id="metric_label_5">운동 템포</small>
+                                <span class="fw-bold text-orange" id="metric_val_5">0s</span>
+                            </div>
+                        </div>
+                        <div class="row mt-2">
+                            <div class="col-6">
+                                <small class="text-muted d-block" id="metric_label_6">미세 떨림 감지</small>
+                                <span class="badge bg-danger" id="metric_val_6">0회</span>
+                            </div>
+                            <div class="col-6">
+                                <small class="text-muted d-block" id="metric_label_7">앞쏠림(Z축) 편차</small>
+                                <span class="badge bg-warning text-dark" id="metric_val_7">0mm</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <div class="card h-100">
+                    <div class="card-header text-danger"><i class="fas fa-exclamation-triangle"></i> Warnings & Stats</div>
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <span class="fw-bold">올바른 자세 유지율</span>
+                            <span class="fs-4 fw-bold text-success"><span id="good_posture_ratio">0</span>%</span>
+                        </div>
+                        
+                        <div class="warning-item">
+                            <span><i class="fas fa-compress-arrows-alt text-danger"></i> <span id="warn_label_1">양팔 밸런스 붕괴</span></span>
+                            <span class="fw-bold" id="warn_val_1">0</span>
+                        </div>
+                        <div class="warning-item">
+                            <span><i class="fas fa-level-up-alt text-danger"></i> <span id="warn_label_2">팔 과도하게 올림</span></span>
+                            <span class="fw-bold" id="warn_val_2">0</span>
+                        </div>
+                        <div class="warning-item">
+                            <span><i class="fas fa-user-injured text-danger"></i> <span id="warn_label_3">허리 반동 사용</span></span>
+                            <span class="fw-bold" id="warn_val_3">0</span>
+                        </div>
+                        <div class="warning-item">
+                            <span><i class="fas fa-arrow-down text-danger"></i> <span id="warn_label_4">상체 숙여짐</span></span>
+                            <span class="fw-bold" id="warn_val_4">0</span>
+                        </div>
+
+                        <div class="alert alert-info mt-3 mb-0 text-center py-2 fw-bold" id="last_feedback">
+                            "대기 중입니다..."
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+
+<script src="js/firebase_config.js"></script>
+<script src="js/ui_manager.js"></script>
+<script src="js/database_service.js"></script>
+
+</body>
+</html>
