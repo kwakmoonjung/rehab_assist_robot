@@ -17,13 +17,17 @@ import numpy as np
 from ultralytics import YOLO 
 
 # ==========================================
-# [수정됨] 로그 파일 저장 경로 설정 (방법 B 적용)
+# [수정됨] 로그 파일 저장 경로 설정 (날짜 및 시간 추가)
 # ==========================================
 # 현재 실행 경로(Current Working Directory) 아래에 'data' 폴더를 지정하고 없으면 생성합니다.
 SAVE_DIR = os.path.join(os.getcwd(), "data")
 os.makedirs(SAVE_DIR, exist_ok=True) 
-LOG_FILE = os.path.join(SAVE_DIR, "exercise_session_log.json")
 
+# 현재 시간을 YYYYMMDD_HHMMSS 형식으로 가져옵니다.
+current_time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+# 파일명에 날짜와 시간을 붙여 동적으로 생성합니다.
+LOG_FILE = os.path.join(SAVE_DIR, f"exercise_session_log_{current_time_str}.json")
 # ==========================================
 # 0. 데이터 로깅 모듈 (기존 유지)
 # ==========================================
