@@ -35,9 +35,10 @@ setup(
         'console_scripts': [
             'posture_corrector = robot_control.posture_corrector:main',
             'pose_analyzer = object_detection.pose_analyzer:main',
+            'test_vision = object_detection.test_vision:main',
             'voice_assistant = voice_processing.voice_assistant:main',
             'system_controller = rehab_assist_robot.system_controller:main',
-            'tracking_pose_bicepcurl = object_detection.tracking_pose_bicepcurl:main',
+            'tracking_pose_lr = object_detection.tracking_pose_lr:main',
             'assist_lr = robot_control.assist_lr:main',
         ],
     },

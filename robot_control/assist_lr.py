@@ -19,10 +19,10 @@ import DR_init
 ROBOT_ID = "dsr01"
 ROBOT_MODEL = "m0609"
 
-MOVE_VEL = 30
-MOVE_ACC = 30
-APPROACH_VEL = 20
-APPROACH_ACC = 20
+MOVE_VEL = 50
+MOVE_ACC = 50
+APPROACH_VEL = 50
+APPROACH_ACC = 50
 RETREAT_VEL = 30
 RETREAT_ACC = 30
 
@@ -31,13 +31,13 @@ RETREAT_ACC = 30
 # ==============================
 # 오른손목 따라가기: "/right_wrist_3d"
 # 왼손목 따라가기: "/left_wrist_3d"
-TARGET_WRIST_TOPIC = "/right_wrist_3d"
+TARGET_ELBOW_TOPIC = "/right_elbow_3d"
 
 # 목표 지점으로 바로 들이대지 않도록 위에서 먼저 접근
-APPROACH_OFFSET_BASE_Z = 80.0
+APPROACH_OFFSET_BASE_Z = 0.0
 
 # 너무 낮은 위치로 내려가는 것 방지
-MIN_BASE_Z = 80.0
+MIN_BASE_Z = 0.0
 
 # 필요 시 좌우 미세 보정
 BASE_Y_OFFSET = 0.0
@@ -73,17 +73,16 @@ class PostureCorrector(Node):
         self.init_robot()
 
         # 스페이스바 눌렀을 때 pose_tracking_node 가 발행하는 손목 3D 좌표 구독
-        self.wrist_sub = self.create_subscription(
+        self.elbow_sub = self.create_subscription(
             Point,
-            TARGET_WRIST_TOPIC,
-            self.wrist_target_callback,
+            TARGET_ELBOW_TOPIC,
+            self.elbow_target_callback,
             10,
         )
 
         self.get_logger().info("🤖 posture_corrector.py 시작")
-        self.get_logger().info(f"📡 구독 토픽: {TARGET_WRIST_TOPIC}")
-        self.get_logger().info("📌 스페이스바로 발행된 손목 3D 좌표를 받아 로봇이 해당 위치로 이동합니다.")
-
+        self.get_logger().info(f"📡 구독 토픽: {TARGET_ELBOW_TOPIC}")
+        self.get_logger().info("📌 스페이스바로 발행된 팔꿈치 3D 좌표를 받아 로봇이 해당 위치로 이동합니다.")
     # ==========================================
     # 좌표 변환 유틸
     # ==========================================
@@ -113,22 +112,22 @@ class PostureCorrector(Node):
     # ==========================================
     # 메인 콜백
     # ==========================================
-    def wrist_target_callback(self, msg):
+    def elbow_target_callback(self, msg):
         """
-        msg.x, msg.y, msg.z : 로봇팔 카메라 기준 손목 3D 좌표(mm 가정)
+        msg.x, msg.y, msg.z : 로봇팔 카메라 기준 팔꿈치 3D 좌표(mm 가정)
         """
         if self.is_moving:
-            self.get_logger().warn("⚠️ 현재 로봇이 동작 중이라 새 손목 좌표는 무시합니다.")
+            self.get_logger().warn("⚠️ 현재 로봇이 동작 중이라 새 팔꿈치 좌표는 무시합니다.")
             return
 
         if msg.z <= 0:
-            self.get_logger().warn("⚠️ 유효하지 않은 손목 depth 값입니다.")
+            self.get_logger().warn("⚠️ 유효하지 않은 팔꿈치 depth 값입니다.")
             return
 
         self.is_moving = True
 
         try:
-            wrist_cam_pos = [msg.x, msg.y, msg.z]
+            elbow_cam_pos = [msg.x, msg.y, msg.z] # 변수명 통일
 
             gripper2cam_path = os.path.join(
                 self.package_path,
@@ -142,10 +141,18 @@ class PostureCorrector(Node):
             # 현재 로봇 pose 기준 카메라 -> 베이스 변환
             current_posx = get_current_posx()[0]
             target_base_xyz = self.transform_to_base(
-                wrist_cam_pos,
+                elbow_cam_pos,
                 gripper2cam_path,
                 current_posx,
             )
+
+            # =============== 🕵️ 디버깅 출력 추가 ===============
+            self.get_logger().info("=" * 40)
+            self.get_logger().info(f"1️⃣ 카메라 기준 팔꿈치 좌표: X={elbow_cam_pos[0]:.1f}, Y={elbow_cam_pos[1]:.1f}, Z={elbow_cam_pos[2]:.1f}")
+            self.get_logger().info(f"2️⃣ 현재 로봇 TCP 좌표 (Base 기준): {current_posx}")
+            self.get_logger().info(f"3️⃣ 변환된 목표 위치 (Base 기준): X={target_base_xyz[0]:.1f}, Y={target_base_xyz[1]:.1f}, Z={target_base_xyz[2]:.1f}")
+            self.get_logger().info("=" * 40)
+            # ===================================================
 
             target_base_xyz[1] += BASE_Y_OFFSET
             target_base_xyz[2] = max(float(target_base_xyz[2]), MIN_BASE_Z)
@@ -154,37 +161,37 @@ class PostureCorrector(Node):
             latest_posx = get_current_posx()[0]
             target_pos = list(target_base_xyz[:3]) + list(latest_posx[3:])
 
-            # 위에서 먼저 접근
-            pre_approach_pos = list(target_pos)
-            pre_approach_pos[2] += APPROACH_OFFSET_BASE_Z
+            # # 위에서 먼저 접근
+            # pre_approach_pos = list(target_pos)
+            # pre_approach_pos[2] += APPROACH_OFFSET_BASE_Z
+
+            # self.get_logger().info(
+            #     f"📷 wrist camera coord: X={msg.x:.1f}, Y={msg.y:.1f}, Z={msg.z:.1f}"
+            # )
+            # self.get_logger().info(
+            #     f"📍 pre-approach 이동: X={pre_approach_pos[0]:.1f}, "
+            #     f"Y={pre_approach_pos[1]:.1f}, Z={pre_approach_pos[2]:.1f}"
+            # )
+            # movel(pre_approach_pos, vel=APPROACH_VEL, acc=APPROACH_ACC)
+            # mwait()
 
             self.get_logger().info(
-                f"📷 wrist camera coord: X={msg.x:.1f}, Y={msg.y:.1f}, Z={msg.z:.1f}"
-            )
-            self.get_logger().info(
-                f"📍 pre-approach 이동: X={pre_approach_pos[0]:.1f}, "
-                f"Y={pre_approach_pos[1]:.1f}, Z={pre_approach_pos[2]:.1f}"
-            )
-            movel(pre_approach_pos, vel=APPROACH_VEL, acc=APPROACH_ACC)
-            mwait()
-
-            self.get_logger().info(
-                f"📍 손목 목표 위치 이동: X={target_pos[0]:.1f}, "
+                f"📍 팔꿈치 목표 위치 이동: X={target_pos[0]:.1f}, "
                 f"Y={target_pos[1]:.1f}, Z={target_pos[2]:.1f}"
             )
-            movel(target_pos, vel=APPROACH_VEL, acc=APPROACH_ACC)
+            movel(target_pos, vel=APPROACH_VEL, acc=APPROACH_ACC)  # 깊이 오프셋 10cm정도만 더 주면 딱 맞음
             mwait()
 
             time.sleep(TARGET_WAIT_SEC)
 
-            self.get_logger().info("↩️ 원위치 상단으로 retreat")
-            movel(pre_approach_pos, vel=RETREAT_VEL, acc=RETREAT_ACC)
-            mwait()
+            # self.get_logger().info("↩️ 원위치 상단으로 retreat")
+            # movel(pre_approach_pos, vel=RETREAT_VEL, acc=RETREAT_ACC)
+            # mwait()
 
-            self.get_logger().info("✅ 손목 좌표 이동 완료")
+            self.get_logger().info("✅ 팔꿈치 좌표 이동 완료")
 
         except Exception as e:
-            self.get_logger().error(f"❌ 손목 이동 중 에러 발생: {e}")
+            self.get_logger().error(f"❌ 팔꿈치 이동 중 에러 발생: {e}")
 
         finally:
             self.is_moving = False
@@ -197,7 +204,9 @@ class PostureCorrector(Node):
         movej(JReady, vel=MOVE_VEL, acc=MOVE_ACC)
         mwait()
 
-        init_pos = [73.03, 71.08, -33.55, 23.68, -123.47, -74.72]
+        # init_pos = [73.03, 71.08, -33.55, 23.68, -123.47, -74.72]
+        # init_pos = [39.06, 48.04, 54.64, -79.77, 129.14, 195.21]
+        init_pos = [28.27, 33.84, 127.04, 116.85, -100.21, 76.33]
         movej(init_pos, vel=MOVE_VEL, acc=MOVE_ACC)
         mwait()
 
