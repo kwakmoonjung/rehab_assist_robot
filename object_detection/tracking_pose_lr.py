@@ -5,7 +5,7 @@ from datetime import datetime
 
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import qos_profile_sensor_data # [추가] QoS 프로필 임포트
+from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image, CameraInfo
 from std_msgs.msg import Float32
 from geometry_msgs.msg import Point
@@ -26,7 +26,7 @@ current_time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
 LOG_FILE = os.path.join(SAVE_DIR, f"exercise_session_log_{current_time_str}.json")
 
 # ==========================================
-# 0. 데이터 로깅 모듈 (노약자 맞춤형 지표 적용)
+# 0. 데이터 로깅 모듈 (노약자 맞춤형 지표 및 로봇 제어 지표 적용)
 # ==========================================
 class ExerciseSessionLogger:
     def __init__(self, log_file, exercise_type):
@@ -46,19 +46,22 @@ class ExerciseSessionLogger:
         self.trunk_angle_sum = 0.0
         self.last_feedback = "No data yet"
         
-        # [신규] 노약자 맞춤형 타겟 지표
-        self.max_rom_left = 0.0   # 좌측 최대 가동 범위
-        self.max_rom_right = 0.0  # 우측 최대 가동 범위
+        self.max_rom_left = 0.0   
+        self.max_rom_right = 0.0  
         self.rep_start_time = None
-        self.rep_durations = []   # 1회 수행 시간(템포) 기록
-        self.tremor_count = 0     # 미세 떨림 감지 횟수
-        self.last_l_wr_y = None   # 이전 프레임 손목 Y좌표
+        self.rep_durations = []   
+        self.tremor_count = 0     
+        self.last_l_wr_y = None   
         self.last_r_wr_y = None
         
-        # [신규] Z축(깊이) 쏠림 측정용
+        # 성공한 횟수의 최고 각도 모음 (평균 계산용)
+        self.successful_peaks = []
+        
         self.l_z_history = []
         self.r_z_history = []
         self.max_z_drift = 0.0
+        
+        self.pure_arom = 0.0
 
         self.warning_counts = {
             "lean_back_momentum": 0,
@@ -72,16 +75,17 @@ class ExerciseSessionLogger:
         self.frame_count += 1
         if is_correct:
             self.good_frame_count += 1
+            current_max_shoulder = max(l_shoulder_angle, r_shoulder_angle)
+            if current_max_shoulder > self.pure_arom:
+                self.pure_arom = round(float(current_max_shoulder), 2)
 
         self.trunk_angle_sum += float(trunk_angle)
 
-        # 1. 좌/우 최대 가동 범위(ROM) 갱신
         if l_shoulder_angle > self.max_rom_left: 
             self.max_rom_left = round(float(l_shoulder_angle), 2)
         if r_shoulder_angle > self.max_rom_right: 
             self.max_rom_right = round(float(r_shoulder_angle), 2)
 
-        # 2. 미세 떨림(Tremor) 감지 (팔을 30도 이상 올렸을 때 Y축이 15픽셀 이상 튀면 카운트)
         if l_wr_y is not None and r_wr_y is not None:
             if self.last_l_wr_y is not None:
                 if abs(l_wr_y - self.last_l_wr_y) > 15 or abs(r_wr_y - self.last_r_wr_y) > 15:
@@ -98,7 +102,6 @@ class ExerciseSessionLogger:
             self.save()
 
     def update_depth(self, l_z, r_z):
-        # 깊이(Z) 값을 리스트에 누적하여 나중에 쏠림(Drift)을 계산
         if l_z is not None and l_z > 0: self.l_z_history.append(l_z)
         if r_z is not None and r_z > 0: self.r_z_history.append(r_z)
 
@@ -106,13 +109,11 @@ class ExerciseSessionLogger:
         self.rep_count = int(rep_count)
         now = datetime.now()
         
-        # 1회 수행 소요 시간 계산
         if self.rep_start_time is not None:
             duration = (now - self.rep_start_time).total_seconds()
             self.rep_durations.append(round(duration, 2))
-        self.rep_start_time = now # 다음 횟수 측정 시작
+        self.rep_start_time = now 
         
-        # Z축 쏠림(앞으로 빠짐) 최대 편차 계산
         if self.l_z_history and self.r_z_history:
             l_drift = max(self.l_z_history) - min(self.l_z_history)
             r_drift = max(self.r_z_history) - min(self.r_z_history)
@@ -120,7 +121,6 @@ class ExerciseSessionLogger:
             if current_drift > self.max_z_drift:
                 self.max_z_drift = round(current_drift, 2)
         
-        # 다음 횟수를 위해 Z축 히스토리 초기화
         self.l_z_history = []
         self.r_z_history = []
 
@@ -148,18 +148,31 @@ class ExerciseSessionLogger:
         session_duration = round((datetime.now() - self.session_start_dt).total_seconds(), 2)
         avg_rep_dur = round(sum(self.rep_durations) / len(self.rep_durations), 2) if self.rep_durations else 0.0
 
+        avg_successful_peak = 0.0
+        if self.successful_peaks:
+            avg_successful_peak = round(sum(self.successful_peaks) / len(self.successful_peaks), 2)
+
+        assist_trigger_angle = max(0.0, self.pure_arom - 5.0) if self.pure_arom > 0 else 0.0
+        target_prom = min(90.0, self.pure_arom + 10.0) if self.pure_arom > 0 else 0.0
+
         data = {
             "exercise_type": self.exercise_type,
             "session_started_at": self.session_started_at,
             "last_updated_at": self.last_updated_at,
-            "session_duration_sec": session_duration, # 총 운동 시간
+            "session_duration_sec": session_duration, 
             "rep_count": self.rep_count,
+            "robot_assist_parameters": {             
+                "pure_arom": self.pure_arom,
+                "assist_trigger_angle": assist_trigger_angle,
+                "target_prom": target_prom
+            },
             "elderly_pt_metrics": {
-                "max_rom_left": self.max_rom_left,       # 좌측 최대 가동 범위
-                "max_rom_right": self.max_rom_right,     # 우측 최대 가동 범위
-                "avg_rep_duration_sec": avg_rep_dur,     # 평균 1회 수행 시간(템포)
-                "tremor_count": self.tremor_count,       # 근력 부족으로 인한 떨림 횟수
-                "max_z_depth_drift_mm": self.max_z_drift # 팔이 앞으로 빠지는 현상 편차
+                "avg_successful_peak_angle": avg_successful_peak, 
+                "max_rom_left": self.max_rom_left,       
+                "max_rom_right": self.max_rom_right,     
+                "avg_rep_duration_sec": avg_rep_dur,     
+                "tremor_count": self.tremor_count,       
+                "max_z_depth_drift_mm": self.max_z_drift 
             },
             "performance_stats": {
                 "total_frames": self.frame_count,
@@ -191,7 +204,11 @@ class ExerciseAnalyzer:
 class LateralRaiseAnalyzer(ExerciseAnalyzer):
     def __init__(self):
         self.count = 0         
-        self.state = "DOWN"    
+        self.state = "DOWN"    # 상태: DOWN, RAISING, LOWERING
+        self.current_rep_peak = 0.0 
+        self.eval_feedback = ""     
+        self.eval_color = (0, 255, 0)
+        self.rep_has_warning = False 
         self.logger = ExerciseSessionLogger(LOG_FILE, "lateral_raise")
 
     def analyze_dual(self, front_kpts, side_kpts, front_img, side_img):
@@ -263,30 +280,72 @@ class LateralRaiseAnalyzer(ExerciseAnalyzer):
             color = (0, 165, 255)
             is_correct_posture = False
 
-        if is_correct_posture:
-            is_down_pose = (l_shoulder_angle < 40) and (r_shoulder_angle < 40)
-            is_up_pose = (80 <= l_shoulder_angle <= 95) and (80 <= r_shoulder_angle <= 95)
+        if not is_correct_posture:
+            self.rep_has_warning = True
 
-            if is_down_pose:
-                if self.state == "UP":
-                    self.state = "DOWN"
-                feedback = "Ready... Raise your arms!"
-                color = (0, 255, 255)
-                # 준비 자세에서 템포 타이머 시작
+        # [업데이트] 3단계 상태 머신 적용 (DOWN -> RAISING -> LOWERING)
+        is_down_pose = (l_shoulder_angle < 40) and (r_shoulder_angle < 40)
+
+        if self.state == "DOWN":
+            if avg_shoulder_angle >= 40:
+                self.state = "RAISING"
+                self.current_rep_peak = avg_shoulder_angle
+                self.rep_has_warning = False
                 if self.logger.rep_start_time is None:
                     self.logger.rep_start_time = datetime.now()
-            elif is_up_pose:
-                if self.state == "DOWN":
-                    self.state = "UP"
-                    self.count += 1  
-                    self.logger.increment_rep(self.count)
-                feedback = "Perfect! Slowly lower arms."
-                color = (255, 0, 0) 
-            elif self.state == "DOWN" and (40 <= l_shoulder_angle < 80):
-                feedback = "Raise a bit higher!"
+                feedback = "Keep going up!"
                 color = (0, 255, 0)
+            else:
+                feedback = "Ready... Raise your arms!"
+                color = (0, 255, 255)
 
-        # [수정] 의미 없던 elbow_angle 제거 및 좌/우 각도, Y축 좌표 전달
+        elif self.state == "RAISING":
+            # 실시간 최고점 갱신
+            if avg_shoulder_angle > self.current_rep_peak:
+                self.current_rep_peak = avg_shoulder_angle
+
+            # ⭐️ 하강 시작점 포착 (최고점에서 5도 이상 떨어지는 순간) ⭐️
+            if avg_shoulder_angle < self.current_rep_peak - 5.0:
+                self.state = "LOWERING"
+                
+                # 이 찰나의 순간에 즉시 평가 및 DB 저장 진행!
+                if not self.rep_has_warning and self.current_rep_peak >= 70.0:
+                    self.logger.successful_peaks.append(round(float(self.current_rep_peak), 2))
+                
+                if self.current_rep_peak >= 80:
+                    self.count += 1
+                    self.logger.increment_rep(self.count)
+                    self.eval_feedback = "Perfect! Great job."
+                    self.eval_color = (0, 255, 0)
+                else:
+                    needed_angle = 80 - int(self.current_rep_peak)
+                    self.eval_feedback = f"Good (Peak: {int(self.current_rep_peak)}). Try {needed_angle} deg more!"
+                    self.eval_color = (0, 255, 255)
+                
+                feedback = "Now slowly lower arms."
+                color = (255, 165, 0)
+            else:
+                if self.current_rep_peak >= 80:
+                    feedback = "Perfect height! Now slowly down."
+                    color = (255, 0, 0)
+                elif is_correct_posture:
+                    feedback = "Keep going up!"
+                    color = (0, 255, 0)
+
+        elif self.state == "LOWERING":
+            if is_down_pose:
+                self.state = "DOWN"
+                self.current_rep_peak = 0.0 # 다음 횟수를 위해 리셋
+                self.eval_feedback = ""     # 피드백 초기화
+                
+            # 내려가는 동안에는 평가 피드백을 계속 유지하여 보여줌
+            if self.eval_feedback != "" and is_correct_posture:
+                feedback = self.eval_feedback
+                color = self.eval_color
+            elif is_correct_posture:
+                feedback = "Slowly down..."
+                color = (255, 165, 0)
+
         self.logger.update_frame(
             l_shoulder_angle=l_shoulder_angle,
             r_shoulder_angle=r_shoulder_angle,
@@ -314,16 +373,13 @@ class PoseTrackingNode(Node):
         super().__init__('pose_tracking_node')
         self.bridge = CvBridge()
         
-        # 1. Color 이미지 구독
         self.create_subscription(Image, '/fixed/camera/color/image_raw', self.side_callback, qos_profile_sensor_data) 
         self.create_subscription(Image, '/robot/camera/color/image_raw', self.front_callback, qos_profile_sensor_data)    
         
-        # 2. Depth & Camera Info 구독
         self.create_subscription(Image, '/robot/camera/aligned_depth_to_color/image_raw', self.depth_callback, qos_profile_sensor_data)
         self.create_subscription(CameraInfo, '/robot/camera/color/camera_info', self.camera_info_callback, qos_profile_sensor_data)
         
-        # 3. 퍼블리셔 선언
-        self.angle_pub = self.create_publisher(Float32, '/patient_elbow_angle', 10)
+        self.angle_pub = self.create_publisher(Float32, '/patient_shoulder_angle', 10)
         self.left_wrist_3d_pub = self.create_publisher(Point, '/left_wrist_3d', 10)   
         self.right_wrist_3d_pub = self.create_publisher(Point, '/right_wrist_3d', 10) 
         
@@ -379,7 +435,6 @@ class PoseTrackingNode(Node):
             left_wrist_3d_coord = None
             right_wrist_3d_coord = None
             
-            # [신규] 로거 전달용 Z 깊이 변수
             l_cz_val = None
             r_cz_val = None
 
@@ -403,7 +458,7 @@ class PoseTrackingNode(Node):
                     if 0 <= l_wr_pt[0] < 640 and 0 <= l_wr_pt[1] < 480:
                         l_cz = float(depth_resized[l_wr_pt[1], l_wr_pt[0]])
                         if l_cz > 0:
-                            l_cz_val = l_cz # 로거 전달용
+                            l_cz_val = l_cz 
                             l_cx, l_cy, l_cz = self._pixel_to_camera_coords(l_wr_pt[0], l_wr_pt[1], l_cz)
                             left_wrist_3d_coord = (l_cx, l_cy, l_cz)
                             cv2.putText(front_img, f"L3D Z:{int(l_cz)}", (l_wr_pt[0] - 40, l_wr_pt[1] - 20), 
@@ -413,14 +468,13 @@ class PoseTrackingNode(Node):
                     if 0 <= r_wr_pt[0] < 640 and 0 <= r_wr_pt[1] < 480:
                         r_cz = float(depth_resized[r_wr_pt[1], r_wr_pt[0]])
                         if r_cz > 0:
-                            r_cz_val = r_cz # 로거 전달용
+                            r_cz_val = r_cz 
                             r_cx, r_cy, r_cz = self._pixel_to_camera_coords(r_wr_pt[0], r_wr_pt[1], r_cz)
                             right_wrist_3d_coord = (r_cx, r_cy, r_cz)
                             cv2.putText(front_img, f"R3D Z:{int(r_cz)}", (r_wr_pt[0] - 40, r_wr_pt[1] - 20), 
                                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
                             cv2.circle(front_img, r_wr_pt, 10, (0, 255, 255), -1)
                 
-                # [신규] 추출된 3D Z축 깊이 값을 로거로 전달 (기존 로직 흐름 유지)
                 self.current_analyzer.logger.update_depth(l_cz_val, r_cz_val)
 
             else:
