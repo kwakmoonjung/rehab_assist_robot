@@ -273,6 +273,9 @@ class BicepCurlAnalyzer(ExerciseAnalyzer):
         return {"mid_pixel": (mid_x, mid_y)}
 
     def analyze(self, kpts, image, kpt_conf=None):
+
+        h, w, _ = image.shape
+        
         visible_now = self._has_required_points(kpt_conf)
         impossible_jump = False
 
