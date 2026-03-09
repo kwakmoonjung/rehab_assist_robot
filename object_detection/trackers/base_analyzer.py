@@ -13,9 +13,9 @@ from ultralytics import YOLO
 
 # [추가] 만들어둔 운동 모듈 임포트
 # (같은 폴더에 있거나 패키지 규칙에 맞게 경로를 설정하세요)
-from shoulder_press import ShoulderPressAnalyzer 
-from bicep_curl import BicepCurlAnalyzer
-from lateral_raise import LateralRaiseAnalyzer
+from object_detection.trackers.shoulder_press import ShoulderPressAnalyzer 
+from object_detection.trackers.bicep_curl import BicepCurlAnalyzer
+from object_detection.trackers.lateral_raise import LateralRaiseAnalyzer
 
 class ExerciseAnalyzer:
     """공통 각도 계산기 (base)"""
