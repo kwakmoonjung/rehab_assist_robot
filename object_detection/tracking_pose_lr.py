@@ -185,7 +185,7 @@ class LateralRaiseAnalyzer(ExerciseAnalyzer):
         feedback = "Good Form!"
         color = (0, 255, 0) 
 
-        if trunk_side_angle > 175: 
+        if trunk_side_angle > 185: 
             feedback = "Warning: Don't lean back! No momentum."
             color = (0, 0, 255)
             is_correct_posture = False
