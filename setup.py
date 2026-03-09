@@ -7,6 +7,7 @@ setup(
     name=package_name,
     version='0.0.0',
     packages=find_packages(include=[
+        'rehab_assist_robot',
         'robot_control', 
         'voice_processing', 
         'object_detection'
@@ -35,6 +36,7 @@ setup(
             'posture_corrector = robot_control.posture_corrector:main',
             'pose_analyzer = object_detection.pose_analyzer:main',
             'voice_assistant = voice_processing.voice_assistant:main',
+            'system_controller = rehab_assist_robot.system_controller:main',
         ],
     },
 )

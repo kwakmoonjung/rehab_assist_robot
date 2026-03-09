@@ -29,6 +29,13 @@ openai_api_key = os.getenv("OPENAI_API_KEY")
 
 LOG_FILE = os.path.expanduser("~/exercise_session_log.json")
 
+'''
+voice_assistant에서 토픽으로 발행하는 값: /system_command
+"START_EXERCISE"    # 운동 시작
+"CORRECTION"        # 교정 시작
+"REPORT_EXERCISE"   # 운동 분석 시작
+'''
+
 # ==========================================
 # 1. 운동 피드백 생성 및 TTS 모듈
 # ==========================================
@@ -135,11 +142,10 @@ class VoiceAssistant(Node):
 <출력 형식>
 반드시 아래 중 하나만 출력하세요.
 
-1. 도구 이동 명령인 경우: 도구1 도구2 / pos1 pos2
-2. 운동 기록 조회인 경우: exercise_log /
-3. 운동 시작 요청인 경우: start_exercise /
-4. 자세 교정 요청인 경우: posture_correction /
-5. 위 4가지에 해당하지 않으면: unknown /
+1. 운동 기록 조회인 경우: exercise_log /
+2. 운동 시작 요청인 경우: start_exercise /
+3. 자세 교정 요청인 경우: posture_correction /
+4. 위 4가지에 해당하지 않으면: unknown /
 
 <규칙>
 - 설명 절대 금지, 다른 문장 절대 금지

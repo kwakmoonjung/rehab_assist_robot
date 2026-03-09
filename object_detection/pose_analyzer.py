@@ -245,7 +245,7 @@ class PoseAnalyzerNode(Node):
         self.create_subscription(Image, '/camera/camera/aligned_depth_to_color/image_raw', self.depth_callback, 10)
         self.create_subscription(CameraInfo, '/camera/camera/color/camera_info', self.camera_info_callback, 10)
         
-        self.angle_pub = self.create_publisher(Float32, '/patient_elbow_angle', 10)
+        # self.angle_pub = self.create_publisher(Float32, '/patient_elbow_angle', 10)
         self.target_3d_pub = self.create_publisher(Point, '/target_correction_3d', 10)
         
         self.model = YOLO('yolo11n-pose.pt')
@@ -322,7 +322,7 @@ class PoseAnalyzerNode(Node):
                         
                         angle_msg = Float32()
                         angle_msg.data = float(target_angle)
-                        self.angle_pub.publish(angle_msg)
+                        # self.angle_pub.publish(angle_msg)
                     else:
                         # Off 상태: 대기 모드 UI 표시 (연산 및 로깅 쉼)
                         cv2.putText(image, "IDLE MODE - Waiting to start", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
