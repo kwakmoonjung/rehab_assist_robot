@@ -35,7 +35,7 @@ setup(
     entry_points={
         'console_scripts': [
             'posture_corrector = robot_control.posture_corrector:main',
-            'pose_analyzer = object_detection.pose_analyzer:main',
+            'base_analyzer = object_detection.base_analyzer:main',
             'voice_assistant = voice_processing.voice_assistant:main',
             'system_controller = rehab_assist_robot.system_controller:main',
             'exercise_logger_node = database.exercise_logger_node:main',
