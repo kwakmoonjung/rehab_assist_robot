@@ -37,6 +37,7 @@ setup(
             'pose_analyzer = object_detection.pose_analyzer:main',
             'voice_assistant = voice_processing.voice_assistant:main',
             'system_controller = rehab_assist_robot.system_controller:main',
+            'tracking_pose_bicepcurl = object_detection.tracking_pose_bicepcurl:main',
         ],
     },
 )
