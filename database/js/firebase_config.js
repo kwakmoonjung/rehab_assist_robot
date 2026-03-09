@@ -3,7 +3,7 @@
 const firebaseConfig = { 
     apiKey: "AIzaSyDNUDW9qkE893MCDD1wma8b8yYHLuDW6JQ", 
     authDomain: "rehab-aa1ee.firebaseapp.com", 
-    databaseURL: "https://rehab-aa1ee-default-rtdb.firebaseio.com", 
+    databaseURL: "https://rehab-aa1ee-default-rtdb.asia-southeast1.firebasedatabase.app", 
     projectId: "rehab-aa1ee", 
     storageBucket: "rehab-aa1ee.firebasestorage.app", 
     messagingSenderId: "199519896475", 
