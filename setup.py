@@ -10,7 +10,8 @@ setup(
         'rehab_assist_robot',
         'robot_control', 
         'voice_processing', 
-        'object_detection'
+        'object_detection',
+        'database'
     ]),
 
     data_files=[
@@ -37,6 +38,7 @@ setup(
             'pose_analyzer = object_detection.pose_analyzer:main',
             'voice_assistant = voice_processing.voice_assistant:main',
             'system_controller = rehab_assist_robot.system_controller:main',
+            'exercise_logger_node = database.exercise_logger_node:main',
         ],
     },
 )
