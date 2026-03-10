@@ -82,6 +82,39 @@ class LateralRaiseStrategy(ExerciseStrategy):
         movel(lift_pos, vel=VELOCITY, acc=ACC)
         mwait()
 
+class ShoulderPressStrategy(ExerciseStrategy):
+    def __init__(self):
+        # 팔꿈치 바로 밑에서 받쳐주기 위한 오프셋 (단위: mm)
+        self.X_OFFSET = 0.0             # X축 이동 없음 (팔꿈치 바로 아래)
+        self.Y_INWARD_OFFSET = -100.0    # Y축으로 -5cm (-50mm) 밀착 (안전 거리 유지)
+        self.Z_APPROACH_OFFSET = -50.0 # Z축으로 -10cm (-100mm) 아래로 접근
+        self.LIFT_OFFSET = 200.0        # 지지 위치에서 위로 20cm(200mm) 들어올림
+
+    def execute_assist(self, td_coord):
+        print("💪 [숄더프레스] 팔꿈치 하단 동적 보조 시작")
+
+        current_posx = get_current_posx()[0] 
+        target_pos = list(td_coord[:3]) + list(current_posx[3:])
+
+        target_pos[0] += self.X_OFFSET
+        target_pos[1] += self.Y_INWARD_OFFSET
+
+        # 1. 팔꿈치 밑으로 10cm 아래 접근
+        approach_pos = list(target_pos)
+        approach_pos[2] = max(approach_pos[2] + self.Z_APPROACH_OFFSET, MIN_DEPTH)
+
+        print(f"📍 팔꿈치 하단 위치로 접근: X={approach_pos[0]:.1f}, Y={approach_pos[1]:.1f}, Z={approach_pos[2]:.1f}")
+        movel(approach_pos, vel=VELOCITY, acc=ACC)
+        mwait()
+
+        # 2. 대기 위치에서 20cm 위로 밀어 올리기
+        lift_pos = list(approach_pos)
+        lift_pos[2] += self.LIFT_OFFSET
+        
+        print(f"⬆️ 위로 밀어 올리기: Z={lift_pos[2]:.1f}")
+        movel(lift_pos, vel=VELOCITY, acc=ACC)
+        mwait()
+
 class BicepCurlStrategy(ExerciseStrategy):
     def __init__(self):
         self.X_OFFSET = 30.0
@@ -129,7 +162,7 @@ class PostureCorrector(Node):
 
         self.strategies = {
             'lateral_raise': LateralRaiseStrategy(),
-            'shoulder_press': LateralRaiseStrategy(),
+            'shoulder_press': ShoulderPressStrategy(),
             'bicep_curl': BicepCurlStrategy()
         }
         self.current_exercise = 'shoulder_press'
