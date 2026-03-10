@@ -1,7 +1,7 @@
 import json
 import os
 import tempfile
-import threading # [추가] 상시 대기를 위한 스레드 모듈
+import threading 
 
 import pyaudio
 import rclpy
@@ -29,7 +29,7 @@ openai_api_key = os.getenv("OPENAI_API_KEY")
 LOG_FILE = os.path.expanduser("~/exercise_session_log.json")
 
 # ==========================================
-# 1. 운동 피드백 생성 및 TTS 모듈 (기존과 완벽히 동일)
+# 1. 운동 피드백 생성 및 TTS 모듈 (기존과 동일)
 # ==========================================
 class VoiceFeedbackGenerator:
     def __init__(self, api_key):
@@ -112,9 +112,10 @@ class VoiceAssistant(Node):
         super().__init__("voice_assistant_node")
         
         self.llm = ChatOpenAI(
-            model="gpt-4o", temperature=0.3, openai_api_key=openai_api_key
+            model="gpt-4o", temperature=0.1, openai_api_key=openai_api_key
         )
 
+        # 💡 [수정됨] 프롬프트에 운동 종목을 추출하여 target으로 넘기도록 규칙 추가
         prompt_content = """
 당신은 음성 명령을 분류하고 필요한 키워드를 추출하는 도우미입니다.
 <역할>
@@ -122,17 +123,31 @@ class VoiceAssistant(Node):
 1. 운동 기록 조회/분석 요청
 2. 운동 시작 요청
 3. 자세 교정 요청
+
 <출력 형식>
-반드시 아래 중 하나만 출력하세요.
+반드시 아래 중 하나만 출력하세요. (키워드 / 타겟)
+
 1. 운동 기록 조회인 경우: exercise_log /
-2. 운동 시작 요청인 경우: start_exercise /
+2. 운동 시작 요청인 경우: start_exercise / [운동종목]
 3. 자세 교정 요청인 경우: posture_correction /
-4. 위 4가지에 해당하지 않으면: unknown /
+4. 위 3가지에 해당하지 않으면: unknown /
+
+<운동종목 작성 규칙>
+사용자가 언급한 운동을 아래 3가지 영어 키워드 중 하나로만 변환하세요.
+- 이두 운동, 팔 운동 -> bicep_curl
+- 숄더 프레스, 어깨 프레스 -> shoulder_press
+- 사레레, 사이드 레터럴 레이즈, 측면 어깨 -> lateral_raise
+* 만약 운동 종목을 말하지 않았다면 / 뒤를 비워두세요.
+
+예시) "나 이두 운동 시작할게" -> start_exercise / bicep_curl
+예시) "사레레 하자" -> start_exercise / lateral_raise
+예시) "운동 시작하자" -> start_exercise / 
+
 <규칙>
 - 설명 절대 금지, 다른 문장 절대 금지
 - 도구와 위치는 공백으로 구분 (목적지가 없으면 / 뒤를 비움)
-- "나 운동 시작할게", "운동하자" 등은 start_exercise로 분류
 - "자세 교정해줘", "로봇 움직여줘" 등은 posture_correction으로 분류
+
 <사용자 입력>
 {user_input}
 """
@@ -153,12 +168,11 @@ class VoiceAssistant(Node):
 
         self.cmd_pub = self.create_publisher(String, '/system_command', 10)
         
-        # [삭제] 트리거 서비스 삭제
-        # self.voice_cmd_srv = self.create_service(...)
+        # 💡 [추가됨] 비전 노드와 로봇 노드에 운동 모드를 알려주기 위한 퍼블리셔
+        self.mode_pub = self.create_publisher(String, '/set_exercise_mode', 10)
 
         self.get_logger().info("🎙️ 상시 대기형 음성 비서 노드 시작!")
         
-        # [추가] 백그라운드에서 상시 음성 인식을 수행할 스레드 시작
         self.listen_thread = threading.Thread(target=self.continuous_listening_loop, daemon=True)
         self.listen_thread.start()
 
@@ -177,41 +191,49 @@ class VoiceAssistant(Node):
         return object_list, target_list
 
     def continuous_listening_loop(self):
-        """[추가] 백그라운드 스레드에서 무한 반복하며 웨이크업 워드를 대기하는 함수"""
-        while rclpy.ok(): # 노드가 켜져 있는 동안 무한 반복
+        while rclpy.ok(): 
             try:
-                # 1. 웨이크업 워드 대기
                 self.get_logger().info("⏳ 웨이크업 워드(호출어) 대기 중...")
                 self.mic_controller.open_stream()
                 self.wakeup_word.set_stream(self.mic_controller.stream)
                 
-                # 웨이크업 워드가 들릴 때까지 블로킹
                 while rclpy.ok() and not self.wakeup_word.is_wakeup():
                     pass
                 
-                # 웨이크업 후 녹음을 위해 스트림 닫기
                 self.mic_controller.close_stream()
                 self.get_logger().info("👂 듣고 있습니다. 명령을 말씀해 주세요...")
 
-                # 2. STT (음성 녹음 후 텍스트 변환)
                 output_message = self.stt.speech2text()
                 
-                # 아무 말도 안 했거나 인식 실패 시 루프 처음으로 복귀
                 if not output_message or not output_message.strip():
                     continue
                     
                 self.get_logger().info(f"🗣️ 인식된 문장: {output_message}")
                 
-                # 3. LLM 의도 파악
                 keywords, targets = self.parse_command(output_message)
                 cmd_msg = String()
 
-                # 4. 명령 분기 처리 및 퍼블리시
                 if "start_exercise" in keywords:
+                    # 💡 [추가됨] 사용자가 운동 종목을 말했다면 /set_exercise_mode 토픽 발행
+                    exercise_name_kor = "운동" 
+                    if targets:
+                        mode_msg = String()
+                        mode_str = targets[0]
+                        mode_msg.data = mode_str
+                        self.mode_pub.publish(mode_msg)
+                        self.get_logger().info(f"✅ [모드 변경 전달] {mode_str}")
+                        
+                        # TTS가 읽어줄 한국어 매핑
+                        if mode_str == "bicep_curl": exercise_name_kor = "이두 운동"
+                        elif mode_str == "shoulder_press": exercise_name_kor = "숄더 프레스"
+                        elif mode_str == "lateral_raise": exercise_name_kor = "사이드 레터럴 레이즈"
+
+                    # 2. 로깅 및 분석 시작 명령 (/system_command)
                     cmd_msg.data = "START_EXERCISE"
                     self.cmd_pub.publish(cmd_msg)
-                    self.get_logger().info("✅ [명령 전달] START_EXERCISE")
-                    self.reporter.speak("네, 운동을 시작합니다. 자세를 잡아주세요.")
+                    self.get_logger().info("✅ [상태 변경 전달] START_EXERCISE")
+                    
+                    self.reporter.speak(f"네, {exercise_name_kor}을 시작합니다. 자세를 잡아주세요.")
 
                 elif "posture_correction" in keywords:
                     cmd_msg.data = "CORRECTION"
@@ -235,12 +257,10 @@ class VoiceAssistant(Node):
             except Exception as e:
                 self.get_logger().error(f"❌ 음성 처리 중 에러: {e}")
             finally:
-                # 에러가 나거나 처리가 끝나면 마이크 스트림을 확실히 닫음
                 try:
                     self.mic_controller.close_stream()
                 except Exception:
                     pass
-
 
 def main(args=None):
     rclpy.init(args=args)
