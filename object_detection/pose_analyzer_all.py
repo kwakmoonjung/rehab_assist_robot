@@ -6,7 +6,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image, CameraInfo
-from std_msgs.msg import String, Float32
+from std_msgs.msg import String
 from geometry_msgs.msg import Point
 from cv_bridge import CvBridge
 import cv2
@@ -15,12 +15,12 @@ from ultralytics import YOLO
 from std_srvs.srv import SetBool, Trigger
 
 # ==========================================
-# 1. 운동 세션 트래커 모듈 (JSON 로컬 저장 제거, Topic 전용)
+# 1. 운동 세션 트래커 모듈
 # ==========================================
 class BaseTracker:
     def __init__(self, exercise_type, publish_callback):
         self.exercise_type = exercise_type
-        self.publish_callback = publish_callback # 메인 노드의 퍼블리셔 콜백
+        self.publish_callback = publish_callback
         self.reset()
 
     def reset(self):
@@ -33,31 +33,23 @@ class BaseTracker:
         self.last_feedback = "No data yet"
         self._reset_specific()
 
-    def _reset_specific(self):
-        pass
+    def _reset_specific(self): pass
 
     def emit_data(self, data):
-        """데이터를 파이썬 딕셔너리로 받아 메인 노드로 전달"""
         if self.publish_callback:
             self.publish_callback(data)
 
-
 class SPTracker(BaseTracker):
-    """숄더 프레스 전용 트래커"""
     def _reset_specific(self):
         self.elbow_angle_sum = 0.0
         self.shoulder_angle_sum = 0.0
         self.trunk_angle_sum = 0.0
-        self.warning_counts = {
-            "body_not_straight": 0, "arm_balance_issue": 0,
-            "too_low": 0, "bend_elbows_at_bottom": 0,
-        }
+        self.warning_counts = {"body_not_straight": 0, "arm_balance_issue": 0, "too_low": 0, "bend_elbows_at_bottom": 0}
         self.build_and_emit()
 
     def update_frame(self, elbow_angle, shoulder_angle, trunk_angle, feedback, is_correct):
         self.frame_count += 1
         if is_correct: self.good_frame_count += 1
-
         self.elbow_angle_sum += float(elbow_angle)
         self.shoulder_angle_sum += float(shoulder_angle)
         self.trunk_angle_sum += float(trunk_angle)
@@ -69,9 +61,7 @@ class SPTracker(BaseTracker):
         elif feedback == "Warning: Don't go too low!": self.warning_counts["too_low"] += 1
         elif feedback == "Warning: Bend elbows at bottom!": self.warning_counts["bend_elbows_at_bottom"] += 1
 
-        # 15프레임마다 DB 연동용 토픽 발생
-        if self.frame_count % 15 == 0:
-            self.build_and_emit()
+        if self.frame_count % 15 == 0: self.build_and_emit()
 
     def increment_rep(self, rep_count):
         self.rep_count = int(rep_count)
@@ -82,34 +72,20 @@ class SPTracker(BaseTracker):
         good_ratio = round((self.good_frame_count / self.frame_count) * 100.0, 2) if self.frame_count > 0 else 0.0
         avg = lambda x: round(x / self.frame_count, 2) if self.frame_count > 0 else 0.0
         data = {
-            "exercise_type": self.exercise_type,
-            "session_started_at": self.session_started_at,
-            "last_updated_at": self.last_updated_at,
-            "rep_count": self.rep_count,
-            "frame_count": self.frame_count,
-            "good_frame_count": self.good_frame_count,
-            "good_posture_ratio": good_ratio,
-            "avg_elbow_angle": avg(self.elbow_angle_sum),
-            "avg_shoulder_angle": avg(self.shoulder_angle_sum),
-            "avg_trunk_angle": avg(self.trunk_angle_sum),
-            "warning_counts": self.warning_counts,
-            "last_feedback": self.last_feedback,
+            "exercise_type": self.exercise_type, "session_started_at": self.session_started_at,
+            "last_updated_at": self.last_updated_at, "rep_count": self.rep_count,
+            "frame_count": self.frame_count, "good_frame_count": self.good_frame_count,
+            "good_posture_ratio": good_ratio, "avg_elbow_angle": avg(self.elbow_angle_sum),
+            "avg_shoulder_angle": avg(self.shoulder_angle_sum), "avg_trunk_angle": avg(self.trunk_angle_sum),
+            "warning_counts": self.warning_counts, "last_feedback": self.last_feedback,
         }
         self.emit_data(data)
 
-
 class BCTracker(BaseTracker):
-    """이두 컬 전용 트래커"""
     def _reset_specific(self):
-        self.analyzed_frame_count = 0
-        self.ignored_frame_count = 0
-        self.elbow_angle_sum = 0.0
-        self.upper_arm_angle_sum = 0.0
-        self.trunk_angle_sum = 0.0
-        self.warning_counts = {
-            "body_not_straight": 0, "arm_balance_issue": 0,
-            "elbows_not_close_to_body": 0, "arms_not_visible": 0,
-        }
+        self.analyzed_frame_count, self.ignored_frame_count = 0, 0
+        self.elbow_angle_sum, self.upper_arm_angle_sum, self.trunk_angle_sum = 0.0, 0.0, 0.0
+        self.warning_counts = {"body_not_straight": 0, "arm_balance_issue": 0, "elbows_not_close_to_body": 0, "arms_not_visible": 0}
         self.build_and_emit()
 
     def update_frame(self, elbow_angle=None, upper_arm_angle=None, trunk_angle=None, feedback="No data yet", is_correct=False, has_valid_measurement=False, count_warning=False):
@@ -132,8 +108,7 @@ class BCTracker(BaseTracker):
             elif feedback == "Warning: Keep elbows close to body!": self.warning_counts["elbows_not_close_to_body"] += 1
             elif feedback == "Warning: Keep both arms visible!": self.warning_counts["arms_not_visible"] += 1
 
-        if self.frame_count % 15 == 0:
-            self.build_and_emit()
+        if self.frame_count % 15 == 0: self.build_and_emit()
 
     def increment_rep(self, rep_count):
         self.rep_count = int(rep_count)
@@ -144,44 +119,25 @@ class BCTracker(BaseTracker):
         good_ratio = round((self.good_frame_count / self.analyzed_frame_count) * 100.0, 2) if self.analyzed_frame_count > 0 else 0.0
         avg = lambda x: round(x / self.analyzed_frame_count, 2) if self.analyzed_frame_count > 0 else 0.0
         data = {
-            "exercise_type": self.exercise_type,
-            "session_started_at": self.session_started_at,
-            "last_updated_at": self.last_updated_at,
-            "rep_count": self.rep_count,
-            "frame_count": self.frame_count,
-            "analyzed_frame_count": self.analyzed_frame_count,
-            "ignored_frame_count": self.ignored_frame_count,
-            "good_posture_ratio": good_ratio,
-            "avg_elbow_angle": avg(self.elbow_angle_sum),
-            "avg_upper_arm_angle": avg(self.upper_arm_angle_sum),
-            "avg_trunk_angle": avg(self.trunk_angle_sum),
-            "warning_counts": self.warning_counts,
+            "exercise_type": self.exercise_type, "session_started_at": self.session_started_at,
+            "last_updated_at": self.last_updated_at, "rep_count": self.rep_count,
+            "frame_count": self.frame_count, "analyzed_frame_count": self.analyzed_frame_count,
+            "ignored_frame_count": self.ignored_frame_count, "good_posture_ratio": good_ratio,
+            "avg_elbow_angle": avg(self.elbow_angle_sum), "avg_upper_arm_angle": avg(self.upper_arm_angle_sum),
+            "avg_trunk_angle": avg(self.trunk_angle_sum), "warning_counts": self.warning_counts,
             "last_feedback": self.last_feedback,
         }
         self.emit_data(data)
 
-
 class LRTracker(BaseTracker):
-    """사이드 레터럴 레이즈 전용 트래커"""
     def _reset_specific(self):
         self.session_start_dt = datetime.now()
-        self.trunk_angle_sum = 0.0
-        self.max_rom_left = 0.0   
-        self.max_rom_right = 0.0  
-        self.rep_start_time = None
-        self.rep_durations = []   
-        self.tremor_count = 0     
-        self.last_l_wr_y = None   
-        self.last_r_wr_y = None
-        self.successful_peaks = [] 
-        self.all_peaks = []        
-        self.r_z_history = []
-        self.max_z_drift = 0.0
-        self.pure_arom = 0.0
-        self.warning_counts = {
-            "lean_back_momentum": 0, "chest_down": 0,
-            "arms_too_high": 0, "arm_balance_issue": 0,
-        }
+        self.trunk_angle_sum, self.max_rom_left, self.max_rom_right = 0.0, 0.0, 0.0
+        self.rep_start_time, self.rep_durations, self.tremor_count = None, [], 0
+        self.last_l_wr_y, self.last_r_wr_y = None, None
+        self.successful_peaks, self.all_peaks, self.r_z_history = [], [], []
+        self.max_z_drift, self.pure_arom = 0.0, 0.0
+        self.warning_counts = {"lean_back_momentum": 0, "chest_down": 0, "arms_too_high": 0, "arm_balance_issue": 0}
         self.build_and_emit()
 
     def update_frame(self, l_shoulder_angle, r_shoulder_angle, trunk_angle, feedback, is_correct, l_wr_y=None, r_wr_y=None):
@@ -189,8 +145,7 @@ class LRTracker(BaseTracker):
         if is_correct:
             self.good_frame_count += 1
             current_max_shoulder = max(l_shoulder_angle, r_shoulder_angle)
-            if current_max_shoulder > self.pure_arom:
-                self.pure_arom = round(float(current_max_shoulder), 2)
+            if current_max_shoulder > self.pure_arom: self.pure_arom = round(float(current_max_shoulder), 2)
 
         self.trunk_angle_sum += float(trunk_angle)
 
@@ -200,10 +155,8 @@ class LRTracker(BaseTracker):
         if l_wr_y is not None and r_wr_y is not None:
             if self.last_l_wr_y is not None:
                 if abs(l_wr_y - self.last_l_wr_y) > 15 or abs(r_wr_y - self.last_r_wr_y) > 15:
-                    if l_shoulder_angle > 30 or r_shoulder_angle > 30:
-                        self.tremor_count += 1
-            self.last_l_wr_y = l_wr_y
-            self.last_r_wr_y = r_wr_y
+                    if l_shoulder_angle > 30 or r_shoulder_angle > 30: self.tremor_count += 1
+            self.last_l_wr_y, self.last_r_wr_y = l_wr_y, r_wr_y
 
         self.last_feedback = feedback
         self.last_updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -212,8 +165,7 @@ class LRTracker(BaseTracker):
         elif feedback == "Warning: Arms too high! Lower them.": self.warning_counts["arms_too_high"] += 1
         elif feedback == "Warning: Balance your arms!": self.warning_counts["arm_balance_issue"] += 1
 
-        if self.frame_count % 15 == 0:
-            self.build_and_emit()
+        if self.frame_count % 15 == 0: self.build_and_emit()
 
     def update_depth(self, r_z):
         if r_z is not None and r_z > 0: self.r_z_history.append(r_z)
@@ -222,8 +174,7 @@ class LRTracker(BaseTracker):
         self.rep_count = int(rep_count)
         now = datetime.now()
         if self.rep_start_time is not None:
-            duration = (now - self.rep_start_time).total_seconds()
-            self.rep_durations.append(round(duration, 2))
+            self.rep_durations.append(round((now - self.rep_start_time).total_seconds(), 2))
         self.rep_start_time = now 
         
         if self.r_z_history:
@@ -246,33 +197,19 @@ class LRTracker(BaseTracker):
         target_prom = min(90.0, self.pure_arom + 10.0) if self.pure_arom > 0 else 0.0
 
         data = {
-            "exercise_type": self.exercise_type,
-            "session_started_at": self.session_started_at,
-            "session_duration_sec": session_duration, 
-            "rep_count": self.rep_count,
-            "robot_assist_parameters": {             
-                "pure_arom": self.pure_arom,
-                "assist_trigger_angle": assist_trigger_angle,
-                "target_prom": target_prom
-            },
+            "exercise_type": self.exercise_type, "session_started_at": self.session_started_at,
+            "session_duration_sec": session_duration, "rep_count": self.rep_count,
+            "robot_assist_parameters": {"pure_arom": self.pure_arom, "assist_trigger_angle": assist_trigger_angle, "target_prom": target_prom},
             "elderly_pt_metrics": {
-                "avg_successful_peak_angle": avg_successful_peak,
-                "avg_all_peak_angle": avg_all_peak,
-                "max_rom_left": self.max_rom_left,       
-                "max_rom_right": self.max_rom_right,     
-                "avg_rep_duration_sec": avg_rep_dur,     
-                "tremor_count": self.tremor_count,       
+                "avg_successful_peak_angle": avg_successful_peak, "avg_all_peak_angle": avg_all_peak,
+                "max_rom_left": self.max_rom_left, "max_rom_right": self.max_rom_right,     
+                "avg_rep_duration_sec": avg_rep_dur, "tremor_count": self.tremor_count,       
                 "max_z_depth_drift_mm": self.max_z_drift 
             },
-            "performance_stats": {
-                "good_posture_ratio": good_ratio,
-                "avg_trunk_angle": avg_trunk
-            },
-            "warning_counts": self.warning_counts,
-            "last_feedback": self.last_feedback,
+            "performance_stats": {"good_posture_ratio": good_ratio, "avg_trunk_angle": avg_trunk},
+            "warning_counts": self.warning_counts, "last_feedback": self.last_feedback,
         }
         self.emit_data(data)
-
 
 # ==========================================
 # 2. 운동 전략 패턴 분석기 모듈 (Analyzer)
@@ -285,6 +222,17 @@ class ExerciseAnalyzer:
         if angle > 180.0: angle = 360 - angle
         return angle
 
+    def draw_skeleton(self, image, l_pts, r_pts, nose_pt):
+        """모든 운동에 통일 적용할 정면 뼈대(선+관절) 그리기"""
+        cv2.line(image, l_pts[3], l_pts[0], (0, 255, 0), 3) 
+        cv2.line(image, l_pts[0], l_pts[1], (0, 255, 0), 3) 
+        cv2.line(image, l_pts[1], l_pts[2], (0, 255, 0), 3) 
+        cv2.line(image, r_pts[3], r_pts[0], (255, 0, 0), 3) 
+        cv2.line(image, r_pts[0], r_pts[1], (255, 0, 0), 3) 
+        cv2.line(image, r_pts[1], r_pts[2], (255, 0, 0), 3) 
+        for pt in l_pts + r_pts + [nose_pt]: 
+            cv2.circle(image, pt, 8, (0, 0, 255), -1)
+
     def analyze(self, node):
         raise NotImplementedError
 
@@ -295,42 +243,40 @@ class ShoulderPressAnalyzer(ExerciseAnalyzer):
         self.tracker = SPTracker("shoulder_press", publish_callback)
 
     def analyze(self, node):
-        if node.main_raw is None: return None
-        image = node.main_raw.copy()
-        h, w, _ = image.shape
-        results = node.model(image, verbose=False, device='cpu')[0]
+        if node.fixed_raw is None or node.robot_raw is None: return None
+        
+        fixed_img = cv2.resize(node.fixed_raw, (640, 480))
+        robot_img = cv2.resize(node.robot_raw, (640, 480))
 
-        if results.keypoints is None or len(results.keypoints.xyn) == 0: return None
-        kpts = results.keypoints.xyn[0].cpu().numpy()
-        if len(kpts) < 13: return None
+        res_fixed = node.model(fixed_img, verbose=False, device='cpu')[0]
+        res_robot = node.model(robot_img, verbose=False, device='cpu')[0]
 
-        nose = [kpts[0][0], kpts[0][1]]
-        l_sh, l_el, l_wr, l_hip = [kpts[5][0], kpts[5][1]], [kpts[7][0], kpts[7][1]], [kpts[9][0], kpts[9][1]], [kpts[11][0], kpts[11][1]]
-        r_sh, r_el, r_wr, r_hip = [kpts[6][0], kpts[6][1]], [kpts[8][0], kpts[8][1]], [kpts[10][0], kpts[10][1]], [kpts[12][0], kpts[12][1]]
+        if res_fixed.keypoints is None or len(res_fixed.keypoints.xyn) == 0: return None
+        if res_robot.keypoints is None or len(res_robot.keypoints.xyn) == 0: return None
+        
+        fixed_kpts = res_fixed.keypoints.xyn[0].cpu().numpy()
+        robot_kpts = res_robot.keypoints.xyn[0].cpu().numpy()
+        if len(fixed_kpts) < 13 or len(robot_kpts) < 9: return None
+
+        w, h = 640, 480
+        # 1. 정면 카메라(Fixed) - 자세 판단 및 뼈대 시각화
+        nose = [fixed_kpts[0][0], fixed_kpts[0][1]]
+        l_sh, l_el, l_wr, l_hip = [fixed_kpts[5][0], fixed_kpts[5][1]], [fixed_kpts[7][0], fixed_kpts[7][1]], [fixed_kpts[9][0], fixed_kpts[9][1]], [fixed_kpts[11][0], fixed_kpts[11][1]]
+        r_sh, r_el, r_wr, r_hip = [fixed_kpts[6][0], fixed_kpts[6][1]], [fixed_kpts[8][0], fixed_kpts[8][1]], [fixed_kpts[10][0], fixed_kpts[10][1]], [fixed_kpts[12][0], fixed_kpts[12][1]]
 
         l_pts = [(int(l_sh[0]*w), int(l_sh[1]*h)), (int(l_el[0]*w), int(l_el[1]*h)), (int(l_wr[0]*w), int(l_wr[1]*h)), (int(l_hip[0]*w), int(l_hip[1]*h))]
         r_pts = [(int(r_sh[0]*w), int(r_sh[1]*h)), (int(r_el[0]*w), int(r_el[1]*h)), (int(r_wr[0]*w), int(r_wr[1]*h)), (int(r_hip[0]*w), int(r_hip[1]*h))]
         nose_pt = (int(nose[0]*w), int(nose[1]*h))
 
-        # 시각화 뼈대
-        cv2.line(image, l_pts[3], l_pts[0], (0, 255, 0), 3)
-        cv2.line(image, l_pts[0], l_pts[1], (0, 255, 0), 3)
-        cv2.line(image, l_pts[1], l_pts[2], (0, 255, 0), 3)
-        cv2.line(image, r_pts[3], r_pts[0], (255, 0, 0), 3)
-        cv2.line(image, r_pts[0], r_pts[1], (255, 0, 0), 3)
-        cv2.line(image, r_pts[1], r_pts[2], (255, 0, 0), 3)
-        for pt in l_pts + r_pts + [nose_pt]: cv2.circle(image, pt, 8, (0, 0, 255), -1)
+        self.draw_skeleton(fixed_img, l_pts, r_pts, nose_pt)
 
-        l_elbow_angle = self.calculate_angle(l_sh, l_el, l_wr)
-        r_elbow_angle = self.calculate_angle(r_sh, r_el, r_wr)
-        l_shoulder_angle = self.calculate_angle(l_hip, l_sh, l_el)
-        r_shoulder_angle = self.calculate_angle(r_hip, r_sh, r_el)
+        l_elbow_angle, r_elbow_angle = self.calculate_angle(l_sh, l_el, l_wr), self.calculate_angle(r_sh, r_el, r_wr)
+        l_shoulder_angle, r_shoulder_angle = self.calculate_angle(l_hip, l_sh, l_el), self.calculate_angle(r_hip, r_sh, r_el)
 
         mid_hip = [(l_hip[0]+r_hip[0])/2, (l_hip[1]+r_hip[1])/2]
         vertical_ref = [mid_hip[0], mid_hip[1]-0.1]
         trunk_angle = self.calculate_angle(vertical_ref, mid_hip, nose)
-        avg_elbow_angle = (l_elbow_angle + r_elbow_angle) / 2.0
-        avg_shoulder_angle = (l_shoulder_angle + r_shoulder_angle) / 2.0
+        avg_elbow_angle, avg_shoulder_angle = (l_elbow_angle + r_elbow_angle) / 2.0, (l_shoulder_angle + r_shoulder_angle) / 2.0
 
         is_correct_posture, feedback, color = True, "Good Form!", (0, 255, 0)
         if trunk_angle > 15: feedback, color, is_correct_posture = "Warning: Keep your body straight!", (0, 165, 255), False
@@ -354,75 +300,72 @@ class ShoulderPressAnalyzer(ExerciseAnalyzer):
 
         self.tracker.update_frame(avg_elbow_angle, avg_shoulder_angle, trunk_angle, feedback, is_correct_posture)
 
-        cv2.putText(image, feedback, (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
-        cv2.putText(image, f"L Elbow: {int(l_elbow_angle)} | L Shld: {int(l_shoulder_angle)}", (30, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        cv2.putText(image, f"R Elbow: {int(r_elbow_angle)} | R Shld: {int(r_shoulder_angle)}", (30, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
-        cv2.putText(image, f"Count: {self.count}", (w - 280, 70), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 255), 3)
+        cv2.putText(fixed_img, feedback, (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+        cv2.putText(fixed_img, f"Count: {self.count}", (w - 200, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
 
-        target_pixel = (int((l_wr[0]*w + r_wr[0]*w)/2), int((l_wr[1]*h + r_wr[1]*h)/2))
-        cv2.circle(image, target_pixel, 10, (0, 255, 255), -1)
+        # 2. 측면 로봇 카메라(Robot) - 오른쪽 팔꿈치 3D 좌표 추출 전용
+        r_el_robot = robot_kpts[8][:2] # 인덱스 8번 = 오른쪽 팔꿈치
+        r_el_pt = (int(r_el_robot[0]*w), int(r_el_robot[1]*h))
+        cv2.circle(robot_img, r_el_pt, 12, (0, 255, 255), -1)
+
+        depth_x = int(r_el_robot[0] * node.robot_depth.shape[1]) if node.robot_depth is not None else -1
+        depth_y = int(r_el_robot[1] * node.robot_depth.shape[0]) if node.robot_depth is not None else -1
+
+        combined_image = np.hstack((fixed_img, robot_img))
 
         return {
-            "angle_val": avg_elbow_angle, "angle_topic": "/patient_elbow_angle",
-            "target_pixel": target_pixel, "camera": "main", "point_topic": "/target_correction_3d",
-            "display_img": image
+            "target_pixel": (depth_x, depth_y), 
+            "display_img": combined_image
         }
-
 
 class BicepCurlAnalyzer(ExerciseAnalyzer):
     def __init__(self, publish_callback):
         self.count = 0
         self.tracker = BCTracker("bicep_curl", publish_callback)
-        self.TRUNK_THRESHOLD = 15
-        self.BALANCE_THRESHOLD = 35
-        self.UPPER_ARM_THRESHOLD = 85
-        self.DOWN_ELBOW_ANGLE = 160
-        self.UP_ELBOW_ANGLE = 60
-        self.DOWN_CONFIRM_FRAMES = 3
-        self.UP_CONFIRM_FRAMES = 2
+        self.TRUNK_THRESHOLD, self.BALANCE_THRESHOLD, self.UPPER_ARM_THRESHOLD = 10, 35, 30
+        self.DOWN_ELBOW_ANGLE, self.UP_ELBOW_ANGLE = 160, 60
+        self.DOWN_CONFIRM_FRAMES, self.UP_CONFIRM_FRAMES = 3, 2
         self.confirmed_pose_state = "DOWN"
-        self.down_pose_streak = 0
-        self.up_pose_streak = 0
+        self.down_pose_streak, self.up_pose_streak = 0, 0
 
     def analyze(self, node):
-        if node.main_raw is None: return None
-        image = node.main_raw.copy()
-        h, w, _ = image.shape
-        results = node.model(image, verbose=False, device='cpu')[0]
+        if node.fixed_raw is None or node.robot_raw is None: return None
         
-        if results.keypoints is None or len(results.keypoints.xyn) == 0: return None
-        kpts = results.keypoints.xyn[0].cpu().numpy()
-        kpt_conf = results.keypoints.conf[0].cpu().numpy() if hasattr(results.keypoints, "conf") and results.keypoints.conf is not None else None
+        fixed_img = cv2.resize(node.fixed_raw, (640, 480))
+        robot_img = cv2.resize(node.robot_raw, (640, 480))
+
+        res_fixed = node.model(fixed_img, verbose=False, device='cpu')[0]
+        res_robot = node.model(robot_img, verbose=False, device='cpu')[0]
+        
+        if res_fixed.keypoints is None or len(res_fixed.keypoints.xyn) == 0: return None
+        if res_robot.keypoints is None or len(res_robot.keypoints.xyn) == 0: return None
+        
+        fixed_kpts = res_fixed.keypoints.xyn[0].cpu().numpy()
+        robot_kpts = res_robot.keypoints.xyn[0].cpu().numpy()
+        kpt_conf = res_fixed.keypoints.conf[0].cpu().numpy() if hasattr(res_fixed.keypoints, "conf") and res_fixed.keypoints.conf is not None else None
         
         visible_now = all((float(kpt_conf[i]) >= 0.35 if kpt_conf is not None and i < len(kpt_conf) else True) for i in [0,5,6,7,8,9,10,11,12])
 
-        if not visible_now or len(kpts) < 13:
+        if not visible_now or len(fixed_kpts) < 13 or len(robot_kpts) < 9:
             feedback, color = "Warning: Keep both arms visible!", (0, 0, 255)
             self.tracker.update_frame(feedback=feedback, is_correct=False, has_valid_measurement=False, count_warning=True)
-            cv2.putText(image, feedback, (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
-            return {"angle_val": 0.0, "angle_topic": "/patient_elbow_angle", "target_pixel": None, "camera": "main", "point_topic": "/target_correction_3d", "display_img": image}
+            cv2.putText(fixed_img, feedback, (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+            return {"target_pixel": None, "display_img": np.hstack((fixed_img, robot_img))}
 
-        nose = [kpts[0][0], kpts[0][1]]
-        l_sh, l_el, l_wr, l_hip = [kpts[5][0], kpts[5][1]], [kpts[7][0], kpts[7][1]], [kpts[9][0], kpts[9][1]], [kpts[11][0], kpts[11][1]]
-        r_sh, r_el, r_wr, r_hip = [kpts[6][0], kpts[6][1]], [kpts[8][0], kpts[8][1]], [kpts[10][0], kpts[10][1]], [kpts[12][0], kpts[12][1]]
+        w, h = 640, 480
+        # 1. 정면 카메라(Fixed)
+        nose = [fixed_kpts[0][0], fixed_kpts[0][1]]
+        l_sh, l_el, l_wr, l_hip = [fixed_kpts[5][0], fixed_kpts[5][1]], [fixed_kpts[7][0], fixed_kpts[7][1]], [fixed_kpts[9][0], fixed_kpts[9][1]], [fixed_kpts[11][0], fixed_kpts[11][1]]
+        r_sh, r_el, r_wr, r_hip = [fixed_kpts[6][0], fixed_kpts[6][1]], [fixed_kpts[8][0], fixed_kpts[8][1]], [fixed_kpts[10][0], fixed_kpts[10][1]], [fixed_kpts[12][0], fixed_kpts[12][1]]
 
         l_pts = [(int(l_sh[0]*w), int(l_sh[1]*h)), (int(l_el[0]*w), int(l_el[1]*h)), (int(l_wr[0]*w), int(l_wr[1]*h)), (int(l_hip[0]*w), int(l_hip[1]*h))]
         r_pts = [(int(r_sh[0]*w), int(r_sh[1]*h)), (int(r_el[0]*w), int(r_el[1]*h)), (int(r_wr[0]*w), int(r_wr[1]*h)), (int(r_hip[0]*w), int(r_hip[1]*h))]
-        
-        cv2.line(image, l_pts[3], l_pts[0], (0, 255, 0), 3)
-        cv2.line(image, l_pts[0], l_pts[1], (0, 255, 0), 3)
-        cv2.line(image, l_pts[1], l_pts[2], (0, 255, 0), 3)
-        cv2.line(image, r_pts[3], r_pts[0], (255, 0, 0), 3)
-        cv2.line(image, r_pts[0], r_pts[1], (255, 0, 0), 3)
-        cv2.line(image, r_pts[1], r_pts[2], (255, 0, 0), 3)
+        nose_pt = (int(nose[0]*w), int(nose[1]*h))
 
-        target_pixel = (int((l_pts[2][0] + r_pts[2][0])/2), int((l_pts[2][1] + r_pts[2][1])/2))
-        cv2.circle(image, target_pixel, 10, (0, 255, 255), -1)
+        self.draw_skeleton(fixed_img, l_pts, r_pts, nose_pt)
 
-        l_elbow_angle = self.calculate_angle(l_sh, l_el, l_wr)
-        r_elbow_angle = self.calculate_angle(r_sh, r_el, r_wr)
-        l_upper_arm_angle = self.calculate_angle(l_hip, l_sh, l_el)
-        r_upper_arm_angle = self.calculate_angle(r_hip, r_sh, r_el)
+        l_elbow_angle, r_elbow_angle = self.calculate_angle(l_sh, l_el, l_wr), self.calculate_angle(r_sh, r_el, r_wr)
+        l_upper_arm_angle, r_upper_arm_angle = self.calculate_angle(l_hip, l_sh, l_el), self.calculate_angle(r_hip, r_sh, r_el)
 
         mid_hip = [(l_hip[0]+r_hip[0])/2.0, (l_hip[1]+r_hip[1])/2.0]
         vertical_ref = [mid_hip[0], mid_hip[1]-0.1]
@@ -449,36 +392,42 @@ class BicepCurlAnalyzer(ExerciseAnalyzer):
                     self.confirmed_pose_state = "UP"
                     feedback, color = "Great Curl! Slowly lower your arms!", (255, 0, 0)
             else:
-                self.down_pose_streak = 0; self.up_pose_streak = 0
+                self.down_pose_streak, self.up_pose_streak = 0, 0
         else:
-            self.down_pose_streak = 0; self.up_pose_streak = 0
+            self.down_pose_streak, self.up_pose_streak = 0, 0
 
         self.tracker.update_frame(elbow_angle=avg_elbow_angle, upper_arm_angle=avg_upper_arm_angle, trunk_angle=trunk_angle, feedback=feedback, is_correct=is_correct_posture, has_valid_measurement=True, count_warning=feedback.startswith("Warning:"))
         
-        cv2.putText(image, feedback, (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
-        cv2.putText(image, f"Count: {self.count}", (w - 280, 70), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 255), 3)
+        cv2.putText(fixed_img, feedback, (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+        cv2.putText(fixed_img, f"Count: {self.count}", (w - 200, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
+
+        # 2. 측면 로봇 카메라(Robot) - 오른쪽 팔꿈치 3D 좌표 추출
+        r_el_robot = robot_kpts[8][:2]
+        r_el_pt = (int(r_el_robot[0]*w), int(r_el_robot[1]*h))
+        cv2.circle(robot_img, r_el_pt, 12, (0, 255, 255), -1)
+
+        depth_x = int(r_el_robot[0] * node.robot_depth.shape[1]) if node.robot_depth is not None else -1
+        depth_y = int(r_el_robot[1] * node.robot_depth.shape[0]) if node.robot_depth is not None else -1
+
+        combined_image = np.hstack((fixed_img, robot_img))
 
         return {
-            "angle_val": avg_elbow_angle, "angle_topic": "/patient_elbow_angle",
-            "target_pixel": target_pixel, "camera": "main", "point_topic": "/target_correction_3d",
-            "display_img": image
+            "target_pixel": (depth_x, depth_y), 
+            "display_img": combined_image
         }
-
 
 class LateralRaiseAnalyzer(ExerciseAnalyzer):
     def __init__(self, publish_callback):
         self.count = 0
         self.state = "DOWN"
         self.current_rep_peak = 0.0
-        self.eval_feedback = ""
-        self.eval_color = (0, 255, 0)
+        self.eval_feedback, self.eval_color = "", (0, 255, 0)
         self.rep_has_warning = False
         self.tracker = LRTracker("lateral_raise", publish_callback)
 
     def analyze(self, node):
         if node.fixed_raw is None or node.robot_raw is None: return None
         
-        # 듀얼 카메라 처리
         fixed_img = cv2.resize(node.fixed_raw, (640, 480))
         robot_img = cv2.resize(node.robot_raw, (640, 480))
 
@@ -490,32 +439,69 @@ class LateralRaiseAnalyzer(ExerciseAnalyzer):
 
         fixed_kpts = res_fixed.keypoints.xyn[0].cpu().numpy()
         robot_kpts = res_robot.keypoints.xyn[0].cpu().numpy()
-        if len(fixed_kpts) < 13 or len(robot_kpts) < 9: return None
+        if len(fixed_kpts) < 13 or len(robot_kpts) < 13: return None
 
         w, h = 640, 480
-        nose = fixed_kpts[0][:2]
+        
+        # ==========================================
+        # [1] 정면 카메라 (Fixed) : 자세 및 뼈대
+        # ==========================================
+        nose = [fixed_kpts[0][0], fixed_kpts[0][1]]
         l_sh_f, l_el_f, l_wr_f, l_hip_f = fixed_kpts[5][:2], fixed_kpts[7][:2], fixed_kpts[9][:2], fixed_kpts[11][:2]
         r_sh_f, r_el_f, r_wr_f, r_hip_f = fixed_kpts[6][:2], fixed_kpts[8][:2], fixed_kpts[10][:2], fixed_kpts[12][:2]
 
-        pts_f = {
-            'l_sh': (int(l_sh_f[0]*w), int(l_sh_f[1]*h)), 'l_el': (int(l_el_f[0]*w), int(l_el_f[1]*h)),
-            'l_hip': (int(l_hip_f[0]*w), int(l_hip_f[1]*h)), 'r_sh': (int(r_sh_f[0]*w), int(r_sh_f[1]*h)),
-            'r_el': (int(r_el_f[0]*w), int(r_el_f[1]*h)), 'r_hip': (int(r_hip_f[0]*w), int(r_hip_f[1]*h))
-        }
-        for pt in pts_f.values(): cv2.circle(fixed_img, pt, 8, (0, 0, 255), -1)
+        l_pts_f = [(int(l_sh_f[0]*w), int(l_sh_f[1]*h)), (int(l_el_f[0]*w), int(l_el_f[1]*h)), (int(l_wr_f[0]*w), int(l_wr_f[1]*h)), (int(l_hip_f[0]*w), int(l_hip_f[1]*h))]
+        r_pts_f = [(int(r_sh_f[0]*w), int(r_sh_f[1]*h)), (int(r_el_f[0]*w), int(r_el_f[1]*h)), (int(r_wr_f[0]*w), int(r_wr_f[1]*h)), (int(r_hip_f[0]*w), int(r_hip_f[1]*h))]
+        nose_pt = (int(nose[0]*w), int(nose[1]*h))
 
-        l_shoulder_angle = self.calculate_angle(l_hip_f, l_sh_f, l_el_f)
-        r_shoulder_angle = self.calculate_angle(r_hip_f, r_sh_f, r_el_f)
+        # 정면 뼈대 그리기
+        self.draw_skeleton(fixed_img, l_pts_f, r_pts_f, nose_pt)
+
+        # 정면 어깨 높이 각도 계산
+        l_shoulder_angle, r_shoulder_angle = self.calculate_angle(l_hip_f, l_sh_f, l_el_f), self.calculate_angle(r_hip_f, r_sh_f, r_el_f)
         avg_shoulder_angle = (l_shoulder_angle + r_shoulder_angle) / 2.0
 
-        mid_hip = [(l_hip_f[0]+r_hip_f[0])/2, (l_hip_f[1]+r_hip_f[1])/2]
-        vertical_ref = [mid_hip[0], mid_hip[1] - 0.1]
-        trunk_front_angle = self.calculate_angle(vertical_ref, mid_hip, nose)
+        # ==========================================
+        # [2] 측면 로봇 카메라 (Robot) : 불필요한 팔 관절 시각화 제거!
+        # ==========================================
+        # 각도 계산용: 어깨와 골반
+        r_sh_s, r_hip_s = robot_kpts[6][:2], robot_kpts[12][:2]
+        # 3D 타겟 추출용: 오른쪽 팔꿈치
+        r_el_s = robot_kpts[8][:2]
+        
+        r_sh_pt = (int(r_sh_s[0]*w), int(r_sh_s[1]*h))
+        r_hip_pt = (int(r_hip_s[0]*w), int(r_hip_s[1]*h))
+        r_el_pt = (int(r_el_s[0]*w), int(r_el_s[1]*h))
 
+        # 측면 몸통 꺾임 각도 계산
+        vertical_ref_side = [r_hip_s[0], r_hip_s[1] - 0.1]
+        trunk_side_angle = self.calculate_angle(vertical_ref_side, r_hip_s, r_sh_s)
+
+        # 🔹 시각화 1: 몸통 꺾임 상태를 직관적으로 보여주는 어깨~골반 선만 그림
+        cv2.line(robot_img, r_hip_pt, r_sh_pt, (255, 0, 0), 3)
+        cv2.circle(robot_img, r_hip_pt, 8, (0, 0, 255), -1)
+        cv2.circle(robot_img, r_sh_pt, 8, (0, 0, 255), -1)
+
+        # 🔹 시각화 2: 3D 타겟용 오른쪽 팔꿈치 노란색 마커 (선 연결 없음)
+        cv2.circle(robot_img, r_el_pt, 12, (0, 255, 255), -1)
+
+        # 3D 타겟 좌표
+        depth_x = int(r_el_s[0] * node.robot_depth.shape[1]) if node.robot_depth is not None else -1
+        depth_y = int(r_el_s[1] * node.robot_depth.shape[0]) if node.robot_depth is not None else -1
+
+        # ==========================================
+        # [3] 자세 판별 및 피드백 로직
+        # ==========================================
         is_correct_posture, feedback, color = True, "Good Form!", (0, 255, 0)
-        if trunk_front_angle > 15: feedback, color, is_correct_posture = "Warning: Keep your body straight!", (0, 0, 255), False
-        elif l_shoulder_angle > 100 or r_shoulder_angle > 100: feedback, color, is_correct_posture = "Warning: Arms too high! Lower them.", (0, 0, 255), False
-        elif abs(l_shoulder_angle - r_shoulder_angle) > 20: feedback, color, is_correct_posture = "Warning: Balance your arms!", (0, 165, 255), False
+        
+        # 측면 반동 체크 (15도 초과)
+        if trunk_side_angle > 15: 
+            feedback, color, is_correct_posture = "Warning: Keep your body straight!", (0, 0, 255), False
+        elif l_shoulder_angle > 100 or r_shoulder_angle > 100: 
+            feedback, color, is_correct_posture = "Warning: Arms too high! Lower them.", (0, 0, 255), False
+        elif abs(l_shoulder_angle - r_shoulder_angle) > 20: 
+            feedback, color, is_correct_posture = "Warning: Balance your arms!", (0, 165, 255), False
+            
         if not is_correct_posture: self.rep_has_warning = True
 
         if self.state == "DOWN":
@@ -540,26 +526,20 @@ class LateralRaiseAnalyzer(ExerciseAnalyzer):
             if (l_shoulder_angle < 40) and (r_shoulder_angle < 40): self.state, self.current_rep_peak, self.eval_feedback = "DOWN", 0.0, ""
             if self.eval_feedback != "" and is_correct_posture: feedback, color = self.eval_feedback, self.eval_color
 
-        self.tracker.update_frame(l_shoulder_angle, r_shoulder_angle, trunk_front_angle, feedback, is_correct_posture, l_wr_f[1]*h, r_wr_f[1]*h)
+        # 트래커 업데이트
+        self.tracker.update_frame(l_shoulder_angle, r_shoulder_angle, trunk_side_angle, feedback, is_correct_posture, l_wr_f[1]*h, r_wr_f[1]*h)
 
-        cv2.putText(fixed_img, feedback, (20, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
-        cv2.putText(fixed_img, f"Count: {self.count}", (w - 180, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
-
-        r_el_robot = robot_kpts[8][:2]
-        r_el_pt = (int(r_el_robot[0]*w), int(r_el_robot[1]*h))
-        cv2.circle(robot_img, r_el_pt, 12, (0, 255, 255), -1)
-
-        depth_x = int(r_el_robot[0] * node.robot_depth.shape[1]) if node.robot_depth is not None else -1
-        depth_y = int(r_el_robot[1] * node.robot_depth.shape[0]) if node.robot_depth is not None else -1
+        # 텍스트 오버레이
+        cv2.putText(fixed_img, feedback, (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+        cv2.putText(fixed_img, f"Count: {self.count}", (w - 200, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 3)
+        cv2.putText(robot_img, f"Side Trunk: {int(trunk_side_angle)} deg", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
 
         combined_image = np.hstack((fixed_img, robot_img))
         
         return {
-            "angle_val": avg_shoulder_angle, "angle_topic": "/patient_shoulder_angle",
-            "target_pixel": (depth_x, depth_y), "camera": "robot", "point_topic": "/right_elbow_3d",
+            "target_pixel": (depth_x, depth_y), 
             "display_img": combined_image
         }
-
 
 # ==========================================
 # 3. 통합 ROS2 메인 노드 (Main Manager)
@@ -576,10 +556,7 @@ class PoseAnalyzerAllNode(Node):
 
         # Publishers
         self.result_pub = self.create_publisher(String, '/exercise_result', 10)
-        self.shoulder_angle_pub = self.create_publisher(Float32, '/patient_shoulder_angle', 10)
-        self.elbow_angle_pub = self.create_publisher(Float32, '/patient_elbow_angle', 10)
-        self.target_3d_pub = self.create_publisher(Point, '/target_correction_3d', 10)
-        self.right_elbow_3d_pub = self.create_publisher(Point, '/right_elbow_3d', 10)
+        self.right_elbow_3d_pub = self.create_publisher(Point, '/right_elbow_3d', 10) # 통일된 3D 좌표
 
         # 전략 패턴(Strategy)
         self.analyzers = {
@@ -591,17 +568,16 @@ class PoseAnalyzerAllNode(Node):
         self.current_analyzer = self.analyzers[self.current_exercise]
 
         # Subscribers
-        self.create_subscription(Image, '/camera/camera/color/image_raw', self.main_cam_cb, 10)
-        self.create_subscription(Image, '/camera/camera/aligned_depth_to_color/image_raw', self.main_depth_cb, 10)
-        self.create_subscription(CameraInfo, '/camera/camera/color/camera_info', self.main_info_cb, 10)
+        self.create_subscription(Image, '/fixed/camera/color/image_raw', self.fixed_cam_cb, qos_profile_sensor_data)
+        self.create_subscription(Image, '/fixed/camera/aligned_depth_to_color/image_raw', self.fixed_depth_cb, qos_profile_sensor_data)
+        self.create_subscription(CameraInfo, '/fixed/camera/color/camera_info', self.fixed_info_cb, qos_profile_sensor_data)
         
-        self.create_subscription(Image, '/fixed/camera/color/image_raw', self.fixed_cam_cb, 10)
-        self.create_subscription(Image, '/robot/camera/color/image_raw', self.robot_cam_cb, 10)
-        self.create_subscription(Image, '/robot/camera/aligned_depth_to_color/image_raw', self.robot_depth_cb, 10)
-        self.create_subscription(CameraInfo, '/robot/camera/color/camera_info', self.robot_info_cb, 10)
-        
-        self.main_raw, self.main_depth, self.main_intrinsics = None, None, None
-        self.fixed_raw, self.robot_raw, self.robot_depth, self.robot_intrinsics = None, None, None, None
+        self.create_subscription(Image, '/robot/camera/color/image_raw', self.robot_cam_cb, qos_profile_sensor_data)
+        self.create_subscription(Image, '/robot/camera/aligned_depth_to_color/image_raw', self.robot_depth_cb, qos_profile_sensor_data)
+        self.create_subscription(CameraInfo, '/robot/camera/color/camera_info', self.robot_info_cb, qos_profile_sensor_data)
+
+        self.fixed_raw, self.fixed_depth, self.fixed_intrinsics = None, None, None
+        self.robot_raw, self.robot_depth, self.robot_intrinsics = None, None, None
 
         self.srv_set_exercise = self.create_service(SetBool, '/set_exercise_state', self.set_exercise_cb)
         self.srv_publish_3d = self.create_service(Trigger, '/publish_target_3d', self.publish_3d_cb)
@@ -611,20 +587,19 @@ class PoseAnalyzerAllNode(Node):
         self.get_logger().info(f"🚀 [통합 버전] 노드 시작! (현재 모드: {self.current_exercise})")
 
     def publish_result_cb(self, data_dict):
-        """딕셔너리를 받아서 JSON String으로 변환한 뒤 DB 연동용 토픽으로 날림"""
         msg = String()
         msg.data = json.dumps(data_dict, ensure_ascii=False)
         self.result_pub.publish(msg)
 
-    def main_cam_cb(self, msg): self.main_raw = self.bridge.imgmsg_to_cv2(msg, "bgr8")
-    def main_depth_cb(self, msg): self.main_depth = self.bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
-    def main_info_cb(self, msg): self.main_intrinsics = {"fx": msg.k[0], "fy": msg.k[4], "ppx": msg.k[2], "ppy": msg.k[5]}
-    
+    # ------------------- Camera Callback Methods -------------------
     def fixed_cam_cb(self, msg): self.fixed_raw = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+    def fixed_depth_cb(self, msg): self.fixed_depth = self.bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
+    def fixed_info_cb(self, msg): self.fixed_intrinsics = {"fx": msg.k[0], "fy": msg.k[4], "ppx": msg.k[2], "ppy": msg.k[5]}
+    
     def robot_cam_cb(self, msg): self.robot_raw = self.bridge.imgmsg_to_cv2(msg, "bgr8")
     def robot_depth_cb(self, msg): self.robot_depth = self.bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
     def robot_info_cb(self, msg): self.robot_intrinsics = {"fx": msg.k[0], "fy": msg.k[4], "ppx": msg.k[2], "ppy": msg.k[5]}
-
+    
     def set_mode_cb(self, msg):
         new_mode = msg.data.lower()
         if new_mode in self.analyzers:
@@ -641,7 +616,7 @@ class PoseAnalyzerAllNode(Node):
             self.current_analyzer.tracker.reset() 
             msg = f"✅ [{self.current_exercise}] 운동 분석을 시작합니다."
         else:
-            self.current_analyzer.tracker.build_and_emit() # 종료 시 최종 기록 한 번 더 발행
+            self.current_analyzer.tracker.build_and_emit()
             msg = f"⏸️ 운동 분석 대기(IDLE) 전환."
         self.get_logger().info(msg)
         response.success = True
@@ -665,36 +640,51 @@ class PoseAnalyzerAllNode(Node):
         return None
 
     def display_timer_callback(self):
-        if not self.is_exercising: return # IDLE 상태면 리소스 소모 방지
+        # 1. 화면에 띄울 듀얼 카메라 이미지 세팅
+        if self.fixed_raw is None or self.robot_raw is None:
+            return
 
-        res = self.current_analyzer.analyze(self)
-        if not res: return
-        
-        cv2.imshow('Integrated PT Analyzer', res['display_img'])
+        # 2. 상태에 따른 화면 오버레이 및 분석 처리
+        if not self.is_exercising:
+            # (1) 운동 대기 상태
+            f_img = cv2.resize(self.fixed_raw, (640, 480))
+            r_img = cv2.resize(self.robot_raw, (640, 480))
+            display_img = np.hstack((f_img, r_img))
+            cv2.putText(display_img, "IDLE MODE - Waiting to start", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+        else:
+            # (2) 운동 중 분석기 가동
+            res = self.current_analyzer.analyze(self)
+            
+            if res is not None:
+                display_img = res['display_img']
+                
+                # 3D 교정 좌표 퍼블리시 (오직 로봇 카메라 기준, /right_elbow_3d)
+                if self.publish_trigger:
+                    if res['target_pixel'] is not None:
+                        px, py = res['target_pixel']
+                        
+                        # 무조건 측면(robot) 카메라의 Depth와 Intrinsic만 사용!
+                        res_3d = self._publish_3d_point(px, py, self.robot_depth, self.robot_intrinsics, self.right_elbow_3d_pub)
+                        
+                        if res_3d and self.current_exercise == 'lateral_raise':
+                            self.current_analyzer.tracker.update_depth(res_3d[2])
+
+                        if res_3d: 
+                            self.get_logger().info(f"✅ 3D 좌표 발행 (/right_elbow_3d): X:{int(res_3d[0])} Y:{int(res_3d[1])} Z:{int(res_3d[2])}")
+                        else: 
+                            self.get_logger().warn("⚠️ 유효한 Depth 3D 좌표를 추출할 수 없습니다.")
+                    self.publish_trigger = False
+            else:
+                f_img = cv2.resize(self.fixed_raw, (640, 480))
+                r_img = cv2.resize(self.robot_raw, (640, 480))
+                display_img = np.hstack((f_img, r_img))
+                cv2.putText(display_img, "Waiting for detection...", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+
+        # 3. 화면 업데이트 (무조건 실행되도록 밖으로 빼냄)
+        cv2.imshow('Dual View PT Trainer', display_img)
         key = cv2.waitKey(1) & 0xFF
-        if key == 32: self.publish_trigger = True 
-
-        # 1. 각도 퍼블리시
-        angle_msg = Float32(data=float(res['angle_val']))
-        if res['angle_topic'] == '/patient_shoulder_angle': self.shoulder_angle_pub.publish(angle_msg)
-        else: self.elbow_angle_pub.publish(angle_msg)
-
-        # 2. 3D 좌표 퍼블리시
-        if self.publish_trigger:
-            if res['target_pixel'] is not None:
-                px, py = res['target_pixel']
-                d_frame = self.robot_depth if res['camera'] == 'robot' else self.main_depth
-                intr_info = self.robot_intrinsics if res['camera'] == 'robot' else self.main_intrinsics
-                pub_obj = self.right_elbow_3d_pub if res['point_topic'] == '/right_elbow_3d' else self.target_3d_pub
-                
-                res_3d = self._publish_3d_point(px, py, d_frame, intr_info, pub_obj)
-                
-                if res_3d and self.current_exercise == 'lateral_raise':
-                    self.current_analyzer.tracker.update_depth(res_3d[2])
-
-                if res_3d: self.get_logger().info(f"✅ 3D 좌표 발행 ({res['point_topic']}): X:{int(res_3d[0])} Y:{int(res_3d[1])} Z:{int(res_3d[2])}")
-                else: self.get_logger().warn("⚠️ 유효한 Depth 3D 좌표를 추출할 수 없습니다.")
-            self.publish_trigger = False
+        if key == 32: 
+            self.publish_trigger = True # 스페이스바 누르면 수동으로 3D 좌표 트리거
 
 
 def main(args=None):
