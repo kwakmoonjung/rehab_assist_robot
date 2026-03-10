@@ -39,7 +39,7 @@ setup(
             'pose_analyzer_all = object_detection.pose_analyzer_all:main',
             'voice_assistant = voice_processing.voice_assistant:main',
             'system_controller = rehab_assist_robot.system_controller:main',
-            'exercise_logger_node = database.exercise_logger_node:main',
+            'user_interface = database.user_interface:main',
         ],
     },
 )

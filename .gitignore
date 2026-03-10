@@ -1,3 +1,4 @@
 test/
-resource/.env
+resource/*.env
+resource/*.json
 *.pyc
