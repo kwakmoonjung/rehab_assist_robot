@@ -78,7 +78,7 @@ class LateralRaiseStrategy(ExerciseStrategy):
 class BicepCurlStrategy(ExerciseStrategy):
     def __init__(self):
         self.X_OFFSET = 30.0
-        self.Z_APPROACH_OFFSET = -100.0  # 팔꿈치 10cm 아래 높이
+        self.Z_APPROACH_OFFSET = 10.0  # 팔꿈치 10cm 아래 높이
         self.Y_APPROACH_OFFSET = -50.0   # 1차 접근: Y축으로 5cm만 먼저 들어가기
         self.Y_SUPPORT_OFFSET = -50.0    # 2차 접근(최종 지지): Y축으로 5cm 더 들어가기 (총 -100.0)
 
@@ -178,7 +178,8 @@ class PostureCorrector(Node):
         JReady = [0, 0, 90, 0, 90, 0]
         movej(JReady, vel=VELOCITY, acc=ACC)
 
-        init_pos = [28.27, 33.84, 127.04, 116.85, -100.21, 76.33]
+        # init_pos = [28.27, 33.84, 127.04, 116.85, -100.21, 76.33]
+        init_pos = [48.07, 29.12, 113.41, 131.73, -117.85, 62.66]
         movej(init_pos, vel=VELOCITY, acc=ACC)
         gripper.close_gripper()
         mwait()
