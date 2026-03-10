@@ -77,20 +77,35 @@ class LateralRaiseStrategy(ExerciseStrategy):
 
 class BicepCurlStrategy(ExerciseStrategy):
     def __init__(self):
-        self.Y_BACK_OFFSET = 50.0 
+        self.X_OFFSET = 30.0
+        self.Z_APPROACH_OFFSET = -100.0  # 팔꿈치 10cm 아래 높이
+        self.Y_APPROACH_OFFSET = -50.0   # 1차 접근: Y축으로 5cm만 먼저 들어가기
+        self.Y_SUPPORT_OFFSET = -50.0    # 2차 접근(최종 지지): Y축으로 5cm 더 들어가기 (총 -100.0)
 
     def execute_assist(self, td_coord):
         print("💪 [이두컬] 정적 지지 시작")
 
         current_posx = get_current_posx()[0] 
-        target_pos = list(td_coord[:3]) + list(current_posx[3:])
+        base_pos = list(td_coord[:3]) + list(current_posx[3:])
 
-        target_pos[1] += self.Y_BACK_OFFSET
-        target_pos[2] = max(target_pos[2], MIN_DEPTH)
+        # 1. 1차 접근 위치 (Approach Position) 계산 및 이동
+        approach_pos = list(base_pos)
+        approach_pos[0] += self.X_OFFSET
+        approach_pos[1] += self.Y_APPROACH_OFFSET
+        approach_pos[2] = max(approach_pos[2] + self.Z_APPROACH_OFFSET, MIN_DEPTH)
 
-        movel(target_pos, vel=VELOCITY, acc=ACC)
+        print(f"📍 1차 접근 위치로 이동: X={approach_pos[0]:.1f}, Y={approach_pos[1]:.1f}, Z={approach_pos[2]:.1f}")
+        movel(approach_pos, vel=VELOCITY, acc=ACC)
         mwait()
-        # 가만히 벽처럼 지지함
+
+        # 2. 최종 지지 위치 (Support Position) 계산 및 이동
+        # 접근 위치에서 Y축으로만 추가 이동합니다.
+        support_pos = list(approach_pos)
+        support_pos[1] += self.Y_SUPPORT_OFFSET
+        
+        print(f"🛡️ 최종 지지 위치로 밀착: X={support_pos[0]:.1f}, Y={support_pos[1]:.1f}, Z={support_pos[2]:.1f}")
+        movel(support_pos, vel=VELOCITY, acc=ACC)
+        mwait()
 
 
 # ==========================================================
@@ -107,7 +122,8 @@ class PostureCorrector(Node):
             'shoulder_press': LateralRaiseStrategy(),
             'bicep_curl': BicepCurlStrategy()
         }
-        self.current_exercise = 'lateral_raise' 
+        # self.current_exercise = 'lateral_raise'   # 사레레, 숄더프레스 테스트 시
+        self.current_exercise = 'bicep_curl'
 
         self.correction_sub = self.create_subscription(
             Point, 
@@ -164,7 +180,7 @@ class PostureCorrector(Node):
 
         init_pos = [28.27, 33.84, 127.04, 116.85, -100.21, 76.33]
         movej(init_pos, vel=VELOCITY, acc=ACC)
-        gripper.open_gripper()
+        gripper.close_gripper()
         mwait()
 
 
