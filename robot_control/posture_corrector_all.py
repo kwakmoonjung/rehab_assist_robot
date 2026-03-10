@@ -49,9 +49,9 @@ class ExerciseStrategy:
 
 class LateralRaiseStrategy(ExerciseStrategy):
     def __init__(self):
-        self.Z_APPROACH_OFFSET = -40.0  # 팔꿈치 4cm 아래에서 접근
-        self.LIFT_OFFSET = 150.0        # 위로 15cm 들어올림
-        self.Y_INWARD_OFFSET = -100.0   # [추가] Y축으로 10cm(100mm) 더 들어가기   
+        self.Z_APPROACH_OFFSET = -40.0  # 팔꿈치 4cm 아래로 접근
+        self.LIFT_OFFSET = 250.0        # 접근 위치에서 위로 25cm(250mm) 들어올림
+        self.Y_INWARD_OFFSET = -100.0   # Y축으로 10cm(100mm) 더 들어가기   
 
     def execute_assist(self, td_coord):
         print("💪 [사레레/숄더프레스] 동적 보조 시작")
@@ -61,23 +61,19 @@ class LateralRaiseStrategy(ExerciseStrategy):
 
         target_pos[1] += self.Y_INWARD_OFFSET
 
-        # 1. 팔꿈치 밑으로 접근
+        # 1. 팔꿈치 밑으로 접근 (대기 위치)
         approach_pos = list(target_pos)
         approach_pos[2] = max(approach_pos[2] + self.Z_APPROACH_OFFSET, MIN_DEPTH)
 
         movel(approach_pos, vel=VELOCITY, acc=ACC)
         mwait()
 
-        # 2. 팔꿈치 지지
-        movel(target_pos, vel=VELOCITY, acc=ACC)
+        # 2. 대기 위치에서 정확히 LIFT_OFFSET 만큼만 위로 들어올리기
+        lift_pos = list(approach_pos)
+        lift_pos[2] += self.LIFT_OFFSET
+        
+        movel(lift_pos, vel=VELOCITY, acc=ACC)
         mwait()
-
-        # 3. 위로 들어올리기
-        target_pos_up = list(target_pos)
-        target_pos_up[2] += self.LIFT_OFFSET
-        movel(target_pos_up, vel=VELOCITY, acc=ACC)
-        mwait()
-
 
 class BicepCurlStrategy(ExerciseStrategy):
     def __init__(self):
