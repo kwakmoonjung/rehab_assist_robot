@@ -197,8 +197,11 @@ class LRTracker(BaseTracker):
         target_prom = min(90.0, self.pure_arom + 10.0) if self.pure_arom > 0 else 0.0
 
         data = {
-            "exercise_type": self.exercise_type, "session_started_at": self.session_started_at,
-            "session_duration_sec": session_duration, "rep_count": self.rep_count,
+            "exercise_type": self.exercise_type, 
+            "session_started_at": self.session_started_at,
+            "session_duration_sec": session_duration, 
+            "rep_count": self.rep_count,
+            "frame_count": self.frame_count,  # 🌟 [수정] 이 부분을 추가해주세요!
             "robot_assist_parameters": {"pure_arom": self.pure_arom, "assist_trigger_angle": assist_trigger_angle, "target_prom": target_prom},
             "elderly_pt_metrics": {
                 "avg_successful_peak_angle": avg_successful_peak, "avg_all_peak_angle": avg_all_peak,
@@ -207,7 +210,8 @@ class LRTracker(BaseTracker):
                 "max_z_depth_drift_mm": self.max_z_drift 
             },
             "performance_stats": {"good_posture_ratio": good_ratio, "avg_trunk_angle": avg_trunk},
-            "warning_counts": self.warning_counts, "last_feedback": self.last_feedback,
+            "warning_counts": self.warning_counts, 
+            "last_feedback": self.last_feedback,
         }
         self.emit_data(data)
 

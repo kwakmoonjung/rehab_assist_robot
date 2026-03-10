@@ -14,7 +14,6 @@ from ament_index_python.packages import get_package_share_directory
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain.prompts import PromptTemplate
-
 from std_msgs.msg import String
 
 # 사용자가 작성해둔 커스텀 음성 처리 모듈 임포트
@@ -26,10 +25,8 @@ package_path = get_package_share_directory("rehab_assist_robot")
 load_dotenv(dotenv_path=os.path.join(package_path, "resource", ".env"))
 openai_api_key = os.getenv("OPENAI_API_KEY")
 
-LOG_FILE = os.path.expanduser("~/exercise_session_log.json")
-
 # ==========================================
-# 1. 운동 피드백 생성 및 TTS 모듈 (기존과 동일)
+# 1. 운동 피드백 생성 및 TTS 모듈 (파일 읽기 기능 제거)
 # ==========================================
 class VoiceFeedbackGenerator:
     def __init__(self, api_key):
@@ -59,19 +56,10 @@ class VoiceFeedbackGenerator:
         )
         self.analysis_chain = self.analysis_prompt | self.llm
 
-    def load_log(self):
-        if not os.path.exists(LOG_FILE):
-            return None
-        try:
-            with open(LOG_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return None
-
-    def build_report_text(self):
-        data = self.load_log()
+    # 파라미터로 데이터를 직접 넘겨받도록 수정
+    def build_report_text(self, data):
         if not data:
-            return "운동 기록 파일이 아직 없습니다. 먼저 운동을 진행해주세요."
+            return "아직 진행 중인 운동 데이터가 없습니다. 먼저 운동을 시작해주세요."
 
         if data.get("frame_count", 0) < 10:
             return "아직 분석할 운동 데이터가 충분하지 않습니다. 조금 더 운동한 뒤 다시 물어봐 주세요."
@@ -104,6 +92,7 @@ class VoiceFeedbackGenerator:
             if temp_path and os.path.exists(temp_path):
                 os.remove(temp_path)
 
+
 # ==========================================
 # 2. ROS2 메인 노드 (상시 대기 음성 비서)
 # ==========================================
@@ -115,7 +104,6 @@ class VoiceAssistant(Node):
             model="gpt-4o", temperature=0.1, openai_api_key=openai_api_key
         )
 
-        # 💡 [수정됨] 프롬프트에 운동 종목을 추출하여 target으로 넘기도록 규칙 추가
         prompt_content = """
 당신은 음성 명령을 분류하고 필요한 키워드를 추출하는 도우미입니다.
 <역할>
@@ -167,14 +155,28 @@ class VoiceAssistant(Node):
         self.wakeup_word = WakeupWord(mic_config.buffer_size)
 
         self.cmd_pub = self.create_publisher(String, '/system_command', 10)
-        
-        # 💡 [추가됨] 비전 노드와 로봇 노드에 운동 모드를 알려주기 위한 퍼블리셔
         self.mode_pub = self.create_publisher(String, '/set_exercise_mode', 10)
 
-        self.get_logger().info("🎙️ 상시 대기형 음성 비서 노드 시작!")
+        # 💡 [핵심 추가] 최신 운동 상태를 메모리에 들고 있기 위한 변수와 구독자 설정
+        self.latest_exercise_data = None
+        self.result_sub = self.create_subscription(
+            String,
+            '/exercise_result',
+            self.exercise_result_callback,
+            10
+        )
+
+        self.get_logger().info("🎙️ 상시 대기형 음성 비서 노드 시작! (토픽 연동 완료)")
         
         self.listen_thread = threading.Thread(target=self.continuous_listening_loop, daemon=True)
         self.listen_thread.start()
+
+    def exercise_result_callback(self, msg):
+        """ /exercise_result 토픽 데이터를 받아 메모리에 최신화 """
+        try:
+            self.latest_exercise_data = json.loads(msg.data)
+        except Exception as e:
+            self.get_logger().error(f"운동 결과 데이터 파싱 오류: {e}")
 
     def parse_command(self, output_message):
         response = self.lang_chain.invoke({"user_input": output_message})
@@ -214,7 +216,6 @@ class VoiceAssistant(Node):
                 cmd_msg = String()
 
                 if "start_exercise" in keywords:
-                    # 💡 [추가됨] 사용자가 운동 종목을 말했다면 /set_exercise_mode 토픽 발행
                     exercise_name_kor = "운동" 
                     if targets:
                         mode_msg = String()
@@ -223,12 +224,10 @@ class VoiceAssistant(Node):
                         self.mode_pub.publish(mode_msg)
                         self.get_logger().info(f"✅ [모드 변경 전달] {mode_str}")
                         
-                        # TTS가 읽어줄 한국어 매핑
                         if mode_str == "bicep_curl": exercise_name_kor = "이두 운동"
                         elif mode_str == "shoulder_press": exercise_name_kor = "숄더 프레스"
                         elif mode_str == "lateral_raise": exercise_name_kor = "사이드 레터럴 레이즈"
 
-                    # 2. 로깅 및 분석 시작 명령 (/system_command)
                     cmd_msg.data = "START_EXERCISE"
                     self.cmd_pub.publish(cmd_msg)
                     self.get_logger().info("✅ [상태 변경 전달] START_EXERCISE")
@@ -246,7 +245,8 @@ class VoiceAssistant(Node):
                     self.cmd_pub.publish(cmd_msg)
                     self.get_logger().info("✅ [명령 전달] REPORT_EXERCISE")
                     
-                    report_text = self.reporter.build_report_text()
+                    # 💡 [핵심 변경] 로컬 파일 대신 구독해둔 메모리의 데이터를 바로 전달
+                    report_text = self.reporter.build_report_text(self.latest_exercise_data)
                     self.get_logger().info(f"📝 운동 리포트: {report_text}")
                     self.reporter.speak(report_text)
 
