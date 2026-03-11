@@ -37,17 +37,62 @@ class RehabUserInterface(Node):
         except Exception as e:
             self.get_logger().error(f"OpenAI 초기화 실패: {e}")
 
+        # 분석 상태 관리 및 최신 데이터 저장을 위한 변수
         self.is_analysis_completed = False
+        self.last_session_data = None
+        self.last_report_scores = None
 
+        # 🌟 1. 센서 데이터 구독 (기존)
         self.subscription = self.create_subscription(
             String,
             '/exercise_result',
             self.exercise_result_callback,
             10
         )
-        self.get_logger().info("📡 '/exercise_result' 통합 토픽 구독 시작...")
+        
+        # 🌟 2. 시스템 명령어 구독 (신규)
+        self.cmd_subscription = self.create_subscription(
+            String,
+            '/system_command',
+            self.system_command_callback,
+            10
+        )
+        
+        self.get_logger().info("📡 '/exercise_result' 및 '/system_command' 토픽 구독 시작...")
 
-    # 🌟 [업데이트] AIT STUDIO 리포트 수준의 정량화 및 비대칭도 산출 로직
+    # 🌟 [신규] 시스템 명령어 처리 콜백 함수
+    def system_command_callback(self, msg):
+        command = msg.data.strip()
+        self.get_logger().info(f"시스템 명령어 수신: {command}")
+        
+        if command == 'START_EXERCISE':
+            # 새 운동 시작 시 플래그 및 데이터 초기화
+            self.is_analysis_completed = False
+            self.last_session_data = None
+            self.last_report_scores = None
+            self.get_logger().info("▶️ 새 운동 세션 시작. 분석 플래그 초기화 완료.")
+            
+        elif command == 'END_EXERCISE':
+            # 종료 명령 수신 시 가장 최근에 저장해둔 데이터를 바탕으로 AI 분석 시작
+            if not self.is_analysis_completed and self.last_session_data:
+                self.get_logger().info("🏁 END_EXERCISE 명령 감지! 최종 AI 리포트 생성을 시작합니다...")
+                self.is_analysis_completed = True
+                
+                # 메인 통신이 막히지 않도록 쓰레드로 AI 요청 분리
+                threading.Thread(
+                    target=self.request_openai_analysis, 
+                    args=(self.last_session_data, self.last_report_scores)
+                ).start()
+            elif not self.last_session_data:
+                self.get_logger().warn("⚠️ END_EXERCISE가 수신되었으나, 분석할 실시간 운동 데이터가 아직 없습니다.")
+                
+        elif command == 'REPORT_EXERCISE':
+            self.get_logger().info("📊 리포트 출력 명령 수신.")
+            
+        elif command == 'CORRECTION':
+            self.get_logger().info("🛠️ 자세 교정 명령 수신.")
+
+    # 정량화 및 비대칭도 산출 로직 (유지)
     def calculate_report_scores(self, data):
         ex_type = data.get("exercise_type", "unknown_exercise")
         mobility_score = 0
@@ -91,10 +136,8 @@ class RehabUserInterface(Node):
             elbow_not_close = warns.get("elbows_not_close_to_body", 0)
             stability_score = max(0, 50 - (elbow_not_close * 10))
 
-        # 🌟 정자세 정확도 (하드코딩을 실제 데이터로 교체)
         posture_accuracy = data.get("good_posture_ratio", data.get("performance_stats", {}).get("good_posture_ratio", 80))
 
-        # 🌟 좌우 비대칭도(Asymmetry) 계산: 두 팔의 차이를 백분율로 산출
         asym_diff = abs(max_l - max_r)
         highest_rom = max(max_l, max_r)
         asym_ratio = round((asym_diff / highest_rom) * 100, 1) if highest_rom > 0 else 0.0
@@ -107,7 +150,7 @@ class RehabUserInterface(Node):
             "total_score": round(mobility_score) + round(stability_score)
         }
 
-    # 🌟 OpenAI 프롬프트에 비대칭도와 정자세 비율 정보 추가
+    # OpenAI 통신 및 Firebase 기록 (유지)
     def request_openai_analysis(self, data, report_scores):
         try:
             exercise = data.get("exercise_type", "운동")
@@ -147,6 +190,7 @@ class RehabUserInterface(Node):
         except Exception as e:
             self.get_logger().error(f"OpenAI 최종 분석 중 에러 발생: {e}")
 
+    # 센서 데이터 수신 콜백 함수 (수정됨)
     def exercise_result_callback(self, msg):
         try:
             data = json.loads(msg.data)
@@ -165,15 +209,10 @@ class RehabUserInterface(Node):
             live_ref = db.reference('live_current_session')
             live_ref.update(data)
 
-            is_finished = data.get("is_finished", False)
-            
-            if is_finished and not self.is_analysis_completed:
-                self.get_logger().info("🏁 운동 세션 종료 감지! 최종 AI 리포트 생성을 시작합니다...")
-                self.is_analysis_completed = True
-                threading.Thread(target=self.request_openai_analysis, args=(data, report_scores)).start()
-
-            if data.get("rep_count", 0) <= 1 and not is_finished:
-                self.is_analysis_completed = False
+            # 🌟 [수정됨] 실시간으로 들어오는 최신 데이터를 계속 덮어씌워 둡니다.
+            # 나중에 END_EXERCISE 신호가 오면 이 변수에 담긴 데이터를 꺼내어 분석합니다.
+            self.last_session_data = data
+            self.last_report_scores = report_scores
 
         except Exception as e:
             self.get_logger().error(f"데이터 처리 에러: {e}")
