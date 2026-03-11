@@ -154,3 +154,62 @@ border-bottom: none;
     font-weight: bold;
     color: white;
 }
+
+/* 마이크 깜빡임 (STT 대기 상태) 애니메이션 */
+@keyframes pulse-opacity {
+    0% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(1.1); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+.blinking-icon {
+    animation: pulse-opacity 1.5s infinite ease-in-out;
+}
+
+/* style.css (맨 아래 추가) */
+
+/* 인체 아이콘 컨테이너 */
+.anatomy-container {
+    position: relative;
+    display: inline-block;
+    font-size: 140px; /* 사람 아이콘 크기 */
+    color: #e0e0e0;   /* 연한 회색으로 베이스 처리 */
+    line-height: 1;
+}
+
+/* 발광점 (Glowing Dot) 공통 스타일 */
+.glowing-dot {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    background-color: #ff3b30; /* 강렬한 빨간색 */
+    border-radius: 50%;
+    display: none; /* 평소에는 숨김 */
+    box-shadow: 0 0 10px #ff3b30, 0 0 20px #ff3b30;
+    animation: pulse-dot 0.8s infinite alternate ease-in-out;
+    z-index: 10;
+}
+
+/* 자바스크립트로 불을 켤 때 사용하는 클래스 */
+.dot-active {
+    display: block !important;
+}
+
+/* 깜빡임(Pulse) 애니메이션 */
+@keyframes pulse-dot {
+    0% { transform: scale(0.8); opacity: 0.6; }
+    100% { transform: scale(1.6); opacity: 1; box-shadow: 0 0 15px #ff3b30, 0 0 30px #ff3b30; }
+}
+
+/* 각 운동별 발광점 위치 지정 (퍼센트로 위치 세팅) */
+/* 숄더프레스 (전면/상단 어깨) */
+#dot_press_left { top: 20%; left: 24%; }
+#dot_press_right { top: 20%; right: 24%; }
+
+/* 사레레 (측면 어깨) */
+#dot_lat_left { top: 27%; left: 14%; }
+#dot_lat_right { top: 27%; right: 14%; }
+
+/* 이두컬 (팔 중간 이두근) */
+#dot_curl_left { top: 48%; left: 16%; }
+#dot_curl_right { top: 48%; right: 16%; }
