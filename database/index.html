@@ -61,7 +61,7 @@
             <div class="card h-100 bg-dark text-white shadow-sm border-0">
                 <div class="card-header py-1 fs-7 bg-secondary"><i class="fas fa-video"></i> 정면 (FIXED CAM)</div>
                 <div class="card-body p-0 d-flex align-items-center overflow-hidden" style="min-height: 200px; background-color: #1a1a1a;">
-                    <img src="http://localhost:8080/stream?topic=/fixed/camera/color/image_raw" class="w-100" onerror="this.src='https://via.placeholder.com/640x480?text=Fixed+Cam+OFF'">
+                    <img src="http://192.168.1.32:8080/stream?topic=/fixed/camera/color/image_raw&type=mjpeg&width=640&height=480" class="w-100" onerror="this.src='https://via.placeholder.com/640x480?text=Fixed+Cam+OFF'">
                 </div>
             </div>
         </div>
@@ -69,7 +69,7 @@
             <div class="card h-100 bg-dark text-white shadow-sm border-0">
                 <div class="card-header py-1 fs-7 bg-secondary"><i class="fas fa-video"></i> 측면 (ROBOT CAM)</div>
                 <div class="card-body p-0 d-flex align-items-center overflow-hidden" style="min-height: 200px; background-color: #1a1a1a;">
-                    <img src="http://localhost:8080/stream?topic=/robot/camera/color/image_raw" class="w-100" onerror="this.src='https://via.placeholder.com/640x480?text=Robot+Cam+OFF'">
+                    <img src="http://192.168.1.32:8080/stream?topic=/robot/camera/color/image_raw&type=mjpeg&width=640&height=480" class="w-100" onerror="this.src='https://via.placeholder.com/640x480?text=Robot+Cam+OFF'">
                 </div>
             </div>
         </div>
@@ -135,10 +135,10 @@
 
     <div id="admin_panel" style="display: none; margin-top: 20px;">
         <div class="alert alert-dark fw-bold py-2"><i class="fas fa-terminal"></i> Engineering Metrics (Debug Only)</div>
-        <div class="row g-3">
-            <div class="col-4"><div class="card p-2 text-center">목표교정각도: <span id="target_prom">0</span></div></div>
-            <div class="col-4"><div class="card p-2 text-center">정자세비율: <span id="good_posture_ratio">0</span>%</div></div>
-            <div class="col-4"><div class="card p-2 text-center">전체프레임: <span id="metric_val_3">0</span></div></div>
+        <div class="row g-3 text-center">
+            <div class="col-4"><div class="card p-2">목표교정각도: <span id="target_prom">0</span></div></div>
+            <div class="col-4"><div class="card p-2">정자세비율: <span id="good_posture_ratio">0</span>%</div></div>
+            <div class="col-4"><div class="card p-2">전체프레임: <span id="metric_val_3">0</span></div></div>
         </div>
     </div>
 </div>
