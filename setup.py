@@ -36,6 +36,7 @@ setup(
         'console_scripts': [
             # 🌟 누락되었던 exercise_logger_node 추가
             'exercise_logger_node = database.exercise_logger_node:main',
+            'exercise_planner = voice_processing.exercise_planner:main',
             'posture_corrector_all = robot_control.posture_corrector_all:main',
             'pose_analyzer_all = object_detection.pose_analyzer_all:main',
             'voice_assistant = voice_processing.voice_assistant:main',
