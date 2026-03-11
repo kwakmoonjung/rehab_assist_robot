@@ -43,7 +43,7 @@ class VoiceResponseGenerator:
         )
 
         analysis_prompt = """
-당신은 재활 운동 보조 코치입니다.
+당신은 노인 운동 보조 코치입니다.
 아래 JSON은 운동 플래너가 DB 전체 기록을 읽은 뒤, 가장 마지막 운동한 날짜의 전체 운동 기록을 기준으로 다시 요약한 데이터입니다.
 
 중요:
@@ -76,7 +76,7 @@ class VoiceResponseGenerator:
         self.analysis_chain = self.analysis_prompt | self.llm
 
         routine_prompt = """
-당신은 재활 운동 코치입니다.
+당신은 노인 운동 코치입니다.
 아래 JSON은 운동 플래너가 DB 전체 기록을 읽은 뒤, 가장 마지막 운동한 날짜의 전체 운동 기록을 기준으로 다시 요약한 데이터입니다.
 
 중요:
