@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import json
+from datetime import datetime
 from collections import defaultdict
 
 import rclpy
@@ -30,24 +31,33 @@ FIREBASE_DB_URL = "https://rehab-aa1ee-default-rtdb.asia-southeast1.firebasedata
 
 
 # ==========================================
-# DB에 저장되는 운동 정보
+# 운동 / 부위 정보
 # ==========================================
 TRACKED_EXERCISE_INFO = {
     "bicep_curl": {
         "name_kr": "이두 컬",
         "main_area": "arms",
+        "main_area_kr": "팔",
         "sub_areas": ["팔", "이두", "전완"],
     },
     "shoulder_press": {
         "name_kr": "숄더 프레스",
         "main_area": "shoulders",
+        "main_area_kr": "어깨",
         "sub_areas": ["어깨", "삼두", "상체 밀기"],
     },
     "lateral_raise": {
         "name_kr": "사이드 레터럴 레이즈",
         "main_area": "shoulders",
+        "main_area_kr": "어깨",
         "sub_areas": ["측면 어깨", "어깨 안정성"],
     },
+}
+
+AREA_LABELS = {
+    "arms": "팔",
+    "shoulders": "어깨",
+    "unknown": "알 수 없음",
 }
 
 WARNING_LABELS = {
@@ -88,11 +98,16 @@ class ExercisePlanner(Node):
     def _init_firebase(self):
         try:
             if not os.path.exists(FIREBASE_KEY_PATH):
-                raise FileNotFoundError(f"serviceAccountKey.json 파일이 없습니다: {FIREBASE_KEY_PATH}")
+                raise FileNotFoundError(
+                    f"serviceAccountKey.json 파일이 없습니다: {FIREBASE_KEY_PATH}"
+                )
 
             if not firebase_admin._apps:
                 cred = credentials.Certificate(FIREBASE_KEY_PATH)
-                firebase_admin.initialize_app(cred, {"databaseURL": FIREBASE_DB_URL})
+                firebase_admin.initialize_app(
+                    cred,
+                    {"databaseURL": FIREBASE_DB_URL}
+                )
 
             self.get_logger().info("🔥 Firebase 연결 완료")
 
@@ -110,6 +125,29 @@ class ExercisePlanner(Node):
 
     def warning_key_to_korean(self, key):
         return WARNING_LABELS.get(key, key.replace("_", " "))
+
+    def area_key_to_korean(self, area_key):
+        return AREA_LABELS.get(area_key, area_key)
+
+    def parse_session_datetime(self, session):
+        raw = session.get("session_started_at", "")
+        if not raw:
+            return None
+
+        formats = [
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d %H:%M",
+            "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%d",
+        ]
+
+        for fmt in formats:
+            try:
+                return datetime.strptime(raw, fmt)
+            except Exception:
+                continue
+
+        return None
 
     def get_top_warning_info(self, warning_totals):
         if not warning_totals:
@@ -136,10 +174,20 @@ class ExercisePlanner(Node):
             "count": count,
         }
 
-    def get_dominant_area(self, area_volume):
+    def get_dominant_area_info(self, area_volume):
         if not area_volume:
-            return "unknown"
-        return max(area_volume.items(), key=lambda x: x[1])[0]
+            return {
+                "key": "unknown",
+                "name_kr": "알 수 없음",
+                "volume": 0,
+            }
+
+        key, volume = max(area_volume.items(), key=lambda x: x[1])
+        return {
+            "key": key,
+            "name_kr": self.area_key_to_korean(key),
+            "volume": volume,
+        }
 
     def estimate_focus_keywords(self, area_volume, exercise_counts):
         shoulders = area_volume.get("shoulders", 0)
@@ -148,9 +196,9 @@ class ExercisePlanner(Node):
         focus = []
 
         if shoulders > arms + 10:
-            focus.extend(["등", "가슴", "자세 안정"])
+            focus.extend(["등", "가슴", "자세 안정", "가벼운 하체"])
         elif arms > shoulders + 10:
-            focus.extend(["어깨 안정", "등", "가슴"])
+            focus.extend(["어깨 안정", "등", "가슴", "자세 안정"])
         else:
             focus.extend(["상체 균형", "자세 안정", "가벼운 하체"])
 
@@ -203,8 +251,34 @@ class ExercisePlanner(Node):
         )
         return all_sessions
 
+    def get_last_workout_day_sessions(self, sessions):
+        dated_sessions = []
+
+        for session in sessions:
+            dt = self.parse_session_datetime(session)
+            if dt is not None:
+                dated_sessions.append((dt, session))
+
+        if not dated_sessions:
+            return "", []
+
+        dated_sessions.sort(key=lambda x: x[0], reverse=True)
+        last_day = dated_sessions[0][0].date().isoformat()
+
+        last_day_sessions = [
+            session for dt, session in dated_sessions
+            if dt.date().isoformat() == last_day
+        ]
+
+        last_day_sessions.sort(
+            key=lambda s: self.parse_session_datetime(s) or datetime.min,
+            reverse=True
+        )
+
+        return last_day, last_day_sessions
+
     # ==========================================
-    # 세션 요약/분석
+    # 세션 요약
     # ==========================================
     def summarize_sessions(self, sessions):
         if not sessions:
@@ -218,7 +292,7 @@ class ExercisePlanner(Node):
                 "latest_sessions": [],
                 "insight": {
                     "dominant_exercise": {"code": "", "name_kr": "", "count": 0},
-                    "dominant_area": "unknown",
+                    "dominant_area": {"key": "unknown", "name_kr": "알 수 없음", "volume": 0},
                     "recommended_focus_keywords": ["가벼운 전신 균형"],
                     "top_warning": {"key": "", "name_kr": "", "count": 0},
                 }
@@ -241,9 +315,11 @@ class ExercisePlanner(Node):
             total_reps_by_exercise[exercise_type] += rep_count
             total_reps += rep_count
 
-            info = TRACKED_EXERCISE_INFO.get(exercise_type)
-            if info:
-                area_volume[info["main_area"]] += rep_count
+            info = TRACKED_EXERCISE_INFO.get(exercise_type, {})
+            main_area = info.get("main_area", "unknown")
+            main_area_kr = info.get("main_area_kr", self.area_key_to_korean(main_area))
+
+            area_volume[main_area] += rep_count
 
             if isinstance(warning_counts, dict):
                 for key, value in warning_counts.items():
@@ -251,15 +327,22 @@ class ExercisePlanner(Node):
 
             latest_sessions.append({
                 "exercise_type": exercise_type,
-                "exercise_name_kr": TRACKED_EXERCISE_INFO.get(exercise_type, {}).get("name_kr", exercise_type),
+                "exercise_name_kr": info.get("name_kr", exercise_type),
+                "main_area": main_area,
+                "main_area_kr": main_area_kr,
                 "rep_count": rep_count,
                 "session_started_at": session.get("session_started_at", ""),
                 "warning_counts": warning_counts,
-                "elderly_pt_metrics": metrics
+                "elderly_pt_metrics": metrics,
             })
 
+        latest_sessions.sort(
+            key=lambda x: x.get("session_started_at", ""),
+            reverse=True
+        )
+
         dominant_exercise = self.get_dominant_exercise_info(exercise_counts)
-        dominant_area = self.get_dominant_area(area_volume)
+        dominant_area = self.get_dominant_area_info(area_volume)
         recommended_focus_keywords = self.estimate_focus_keywords(area_volume, exercise_counts)
         top_warning = self.get_top_warning_info(warning_totals)
 
@@ -280,9 +363,19 @@ class ExercisePlanner(Node):
         }
 
     def build_analysis_payload(self):
-        sessions = self.get_all_sessions_from_db()
-        summary = self.summarize_sessions(sessions)
-        return summary
+        all_sessions = self.get_all_sessions_from_db()
+
+        all_time_summary = self.summarize_sessions(all_sessions)
+        last_workout_date, last_day_sessions = self.get_last_workout_day_sessions(all_sessions)
+        last_day_summary = self.summarize_sessions(last_day_sessions)
+
+        return {
+            "basis_mode": "last_workout_day",
+            "last_workout_date": last_workout_date,
+            "last_day_session_count": len(last_day_sessions),
+            "last_day_summary": last_day_summary,
+            "all_time_summary": all_time_summary,
+        }
 
     # ==========================================
     # 응답 발행

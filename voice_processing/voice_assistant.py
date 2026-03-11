@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import json
 import os
 import tempfile
@@ -21,6 +22,9 @@ from voice_processing.wakeup_word import WakeupWord
 from voice_processing.stt import STT
 
 
+# ==========================================
+# 환경 설정
+# ==========================================
 package_path = get_package_share_directory("rehab_assist_robot")
 load_dotenv(dotenv_path=os.path.join(package_path, "resource", ".env"))
 openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -40,22 +44,27 @@ class VoiceResponseGenerator:
 
         analysis_prompt = """
 당신은 재활 운동 보조 코치입니다.
-아래 JSON은 운동 플래너가 DB 전체 기록을 분석해서 만든 구조화 데이터입니다.
-이 데이터를 바탕으로 사용자가 듣기 쉽게 한국어로 짧게 설명하세요.
+아래 JSON은 운동 플래너가 DB 전체 기록을 읽은 뒤, 가장 마지막 운동한 날짜의 전체 운동 기록을 기준으로 다시 요약한 데이터입니다.
+
+중요:
+- 반드시 last_workout_date 와 last_day_summary 를 우선 기준으로 설명하세요.
+- all_time_summary 는 보조 참고용입니다.
+- 가장 최근 운동 1개가 아니라, 가장 마지막 운동한 날짜 하루 전체 기록을 기준으로 설명해야 합니다.
 
 반드시 포함:
-1. 최근 운동이 어느 쪽에 치우쳤는지 또는 어떤 운동이 많았는지
-2. 총 세션 수 또는 총 반복 수
-3. 가장 눈에 띄는 자세 문제 1개
-4. 오늘 보완하면 좋은 부위 1개 이상
+1. 가장 마지막 운동한 날짜가 언제인지
+2. 그날 어떤 부위를 중심으로 운동했는지
+3. 그날 어떤 운동 비중이 높았는지
+4. 그날 기록 기준으로 가장 눈에 띄는 자세 문제 1개
+5. 오늘 보완하면 좋은 부위 1개 이상
 
 규칙:
 - 3~4문장
 - 쉬운 한국어
 - 제목 금지
 - 리스트 금지
-- 환자에게 직접 말하듯 자연스럽게
-- 데이터가 적으면 데이터가 아직 충분하지 않다고 부드럽게 말할 것
+- 자연스럽게 말하듯 작성
+- 첫 문장이나 두 번째 문장 안에 날짜와 중심 부위를 꼭 언급할 것
 
 분석 데이터:
 {analysis_json}
@@ -68,20 +77,27 @@ class VoiceResponseGenerator:
 
         routine_prompt = """
 당신은 재활 운동 코치입니다.
-아래 JSON은 운동 플래너가 DB 전체 기록을 분석해서 만든 구조화 데이터입니다.
-이 데이터를 바탕으로 오늘의 추천 운동 루틴을 한국어로 자연스럽게 말하세요.
+아래 JSON은 운동 플래너가 DB 전체 기록을 읽은 뒤, 가장 마지막 운동한 날짜의 전체 운동 기록을 기준으로 다시 요약한 데이터입니다.
+
+중요:
+- 반드시 last_workout_date 와 last_day_summary 를 우선 기준으로 루틴을 구성하세요.
+- 가장 최근 운동 1개가 아니라, 가장 마지막 운동한 날짜 하루 전체 운동 성향을 기준으로 판단해야 합니다.
+- 예를 들어 마지막 운동 날짜에 어깨 중심 운동 비중이 높았다면, 오늘은 어깨를 또 몰아서 하기보다 가슴, 등, 자세 안정, 하체 보완 쪽으로 루틴을 짜세요.
 
 반드시 포함:
-1. 오늘 보완해야 할 핵심 부위
-2. 오늘 할 운동 3~4개
-3. 각 운동별 횟수와 세트 수
-4. 마지막에 주의사항 1문장
+1. 가장 마지막 운동한 날짜가 언제였는지
+2. 그날 어느 부위를 중심으로 운동했는지
+3. 그래서 오늘은 어느 부위를 중점적으로 보완할 것인지
+4. 오늘 할 운동 3~4개
+5. 각 운동별 횟수와 세트 수
+6. 마지막에 주의사항 1문장
 
 규칙:
 - 4~6문장
 - 제목 금지
 - 리스트 금지
 - 음성으로 읽기 쉽게 작성
+- 첫 문장 또는 두 번째 문장에서 날짜와 직전 운동 부위를 반드시 언급할 것
 - 너무 어렵거나 위험한 운동은 피할 것
 - 장비 없어도 가능한 운동 위주
 - 상체 중심으로 하되 필요하면 가벼운 하체 1개 정도 포함 가능
@@ -96,7 +112,8 @@ class VoiceResponseGenerator:
         self.routine_chain = self.routine_prompt | self.llm
 
     def build_exercise_log_text(self, analysis_data):
-        if not analysis_data or analysis_data.get("total_sessions", 0) == 0:
+        last_day_summary = analysis_data.get("last_day_summary", {}) if analysis_data else {}
+        if not analysis_data or last_day_summary.get("total_sessions", 0) == 0:
             return (
                 "아직 저장된 운동 기록이 많지 않습니다. "
                 "조금 더 운동 데이터가 쌓이면 더 정확하게 분석해드릴 수 있습니다."
@@ -108,7 +125,8 @@ class VoiceResponseGenerator:
         return response.content.strip()
 
     def build_today_routine_text(self, analysis_data):
-        if not analysis_data or analysis_data.get("total_sessions", 0) == 0:
+        last_day_summary = analysis_data.get("last_day_summary", {}) if analysis_data else {}
+        if not analysis_data or last_day_summary.get("total_sessions", 0) == 0:
             return (
                 "기록이 아직 충분하지 않아 가벼운 기본 루틴으로 진행하겠습니다. "
                 "오늘은 숄더 프레스 8회 2세트, 이두 컬 10회 2세트, 벽 푸시업 10회 2세트로 시작하세요. "
@@ -206,7 +224,7 @@ unknown /
 "오늘 운동 기록 알려줘" -> exercise_log /
 "내 운동 데이터 분석해줘" -> exercise_log /
 "오늘 루틴 짜줘" -> today_routine /
-"오늘 할 운동 추천해줘" -> today_routine /
+"오늘 운동 루틴 추천해줘" -> today_routine /
 "이두 운동 시작할게" -> start_exercise / bicep_curl
 "사레레 하자" -> start_exercise / lateral_raise
 "운동 시작하자" -> start_exercise /
