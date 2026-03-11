@@ -22,6 +22,9 @@ TOOLCHARGER_IP = "192.168.1.1"
 TOOLCHARGER_PORT = "502"
 MIN_DEPTH = 50.0
 
+# [추가] 지지 상태를 관리하는 전역 변수
+g_is_supporting = False
+
 # ==========================================================
 # 1. 두산 API 전역(Global) 세팅 
 # ==========================================================
@@ -34,6 +37,7 @@ DR_init.__dsr__node = dsr_node
 
 try:
     from DSR_ROBOT2 import movej, movel, get_current_posj, get_current_posx, mwait
+    from DSR_ROBOT2 import task_compliance_ctrl, release_compliance_ctrl
 except ImportError as e:
     print(f"Error importing DSR_ROBOT2: {e}")
     sys.exit()
@@ -118,34 +122,39 @@ class ShoulderPressStrategy(ExerciseStrategy):
 class BicepCurlStrategy(ExerciseStrategy):
     def __init__(self):
         self.X_OFFSET = 30.0
-        self.Z_APPROACH_OFFSET = 10.0  # 팔꿈치 10cm 아래 높이
-        self.Y_APPROACH_OFFSET = -50.0   # 1차 접근: Y축으로 5cm만 먼저 들어가기
-        self.Y_SUPPORT_OFFSET = -50.0    # 2차 접근(최종 지지): Y축으로 5cm 더 들어가기 (총 -100.0)
+        self.Z_APPROACH_OFFSET = 10.0  
+        self.Y_APPROACH_OFFSET = -50.0   
+        self.Y_SUPPORT_OFFSET = -50.0    
 
     def execute_assist(self, td_coord):
-        print("💪 [이두컬] 정적 지지 시작")
+        global g_is_supporting
+
+        print("[이두컬] 정적 지지 시작")
 
         current_posx = get_current_posx()[0] 
         base_pos = list(td_coord[:3]) + list(current_posx[3:])
 
-        # 1. 1차 접근 위치 (Approach Position) 계산 및 이동
         approach_pos = list(base_pos)
         approach_pos[0] += self.X_OFFSET
         approach_pos[1] += self.Y_APPROACH_OFFSET
         approach_pos[2] = max(approach_pos[2] + self.Z_APPROACH_OFFSET, MIN_DEPTH)
 
-        print(f"📍 1차 접근 위치로 이동: X={approach_pos[0]:.1f}, Y={approach_pos[1]:.1f}, Z={approach_pos[2]:.1f}")
+        print(f"1차 접근 위치로 이동: X={approach_pos[0]:.1f}, Y={approach_pos[1]:.1f}, Z={approach_pos[2]:.1f}")
         movel(approach_pos, vel=VELOCITY, acc=ACC)
         mwait()
 
-        # 2. 최종 지지 위치 (Support Position) 계산 및 이동
-        # 접근 위치에서 Y축으로만 추가 이동합니다.
         support_pos = list(approach_pos)
         support_pos[1] += self.Y_SUPPORT_OFFSET
         
-        print(f"🛡️ 최종 지지 위치로 밀착: X={support_pos[0]:.1f}, Y={support_pos[1]:.1f}, Z={support_pos[2]:.1f}")
+        print(f"최종 지지 위치로 밀착: X={support_pos[0]:.1f}, Y={support_pos[1]:.1f}, Z={support_pos[2]:.1f}")
         movel(support_pos, vel=VELOCITY, acc=ACC)
         mwait()
+
+        task_compliance_ctrl(stx=[10000, 3000, 1000, 100, 100, 100], time=0.5)
+
+        # [추가] 이동 완료 후 상태 변수 활성화 및 함수 정상 종료
+        g_is_supporting = True
+        print("[이두컬] 지지 위치 도달. 종료 신호 대기 중...")
 
 
 # ==========================================================
@@ -155,17 +164,14 @@ class PostureCorrector(Node):
     def __init__(self):
         super().__init__("posture_corrector_node")
         
-        # [수정] 이동 중 에러를 방지하기 위해 is_moving 변수를 최상단으로 올림
         self.is_moving = False 
         
         self.init_robot()
 
         self.strategies = {
-            'lateral_raise': LateralRaiseStrategy(),
-            'shoulder_press': ShoulderPressStrategy(),
             'bicep_curl': BicepCurlStrategy()
         }
-        self.current_exercise = 'shoulder_press'
+        self.current_exercise = 'bicep_curl'
 
         self.mode_sub = self.create_subscription(
             String, '/set_exercise_mode', self.mode_callback, 10
@@ -175,35 +181,40 @@ class PostureCorrector(Node):
             Point, '/right_elbow_3d', self.correction_target_callback, 10
         )
         
-        # 💡 [추가] 운동 시작 시 로봇을 제자리로 돌리기 위해 /system_command 구독
         self.sys_cmd_sub = self.create_subscription(
             String, '/system_command', self.sys_cmd_callback, 10
         )
 
         self.package_path = get_package_share_directory("rehab_assist_robot") 
-        self.get_logger().info(f"🤖 노드 시작! 현재 로봇 모드: [{self.current_exercise}]")
+        self.get_logger().info(f"노드 시작! 현재 로봇 모드: [{self.current_exercise}]")
 
-    # 💡 [추가] 시스템 명령 콜백: "START_EXERCISE"가 들어오면 무조건 init_pos로 복귀
     def sys_cmd_callback(self, msg):
+        global g_is_supporting
+        
         if msg.data == "START_EXERCISE":
-            self.get_logger().info("🔄 새로운 운동 시작 명령 감지. 카메라 뷰 확보를 위해 로봇을 초기 위치로 복귀시킵니다.")
+            self.get_logger().info("새로운 운동 시작 명령 감지. 카메라 뷰 확보를 위해 로봇을 초기 위치로 복귀시킵니다.")
             self.move_to_init_pos()
+        elif msg.data == "END_EXERCISE":
+            # [추가] 지지 상태일 때만 해제 수행
+            if g_is_supporting:
+                self.get_logger().info("종료 신호 수신. 정적 지지를 해제합니다.")
+                release_compliance_ctrl()
+                g_is_supporting = False
 
-    # 💡 [추가] 초기 위치 복귀 전용 함수 (안전장치 is_moving 적용)
     def move_to_init_pos(self):
         if self.is_moving:
-            self.get_logger().warn("⚠️ 로봇이 현재 교정 동작 중입니다. 복귀 명령을 무시하거나 대기합니다.")
+            self.get_logger().warn("로봇이 현재 교정 동작 중입니다. 복귀 명령을 무시하거나 대기합니다.")
             return
             
         self.is_moving = True
         try:
             init_pos = [48.07, 29.12, 113.41, 131.73, -117.85, 62.66]
-            self.get_logger().info("🚀 초기 위치(카메라 촬영 뷰)로 로봇 이동 시작...")
+            self.get_logger().info("초기 위치(카메라 촬영 뷰)로 로봇 이동 시작...")
             movej(init_pos, vel=VELOCITY, acc=ACC)
             mwait()
-            self.get_logger().info("✅ 초기 위치 도착 완료! 측면 뷰가 성공적으로 확보되었습니다.")
+            self.get_logger().info("초기 위치 도착 완료! 측면 뷰가 성공적으로 확보되었습니다.")
         except Exception as e:
-            self.get_logger().error(f"❌ 초기 위치 이동 중 에러 발생: {e}")
+            self.get_logger().error(f"초기 위치 이동 중 에러 발생: {e}")
         finally:
             self.is_moving = False
 
@@ -211,9 +222,9 @@ class PostureCorrector(Node):
         new_mode = msg.data.lower()
         if new_mode in self.strategies:
             self.current_exercise = new_mode
-            self.get_logger().info(f"🔄 로봇 보조 모드가 [{new_mode}](으)로 변경되었습니다.")
+            self.get_logger().info(f"로봇 보조 모드가 [{new_mode}](으)로 변경되었습니다.")
         else:
-            self.get_logger().warn(f"⚠️ 지원하지 않는 로봇 운동 모드입니다: {new_mode}")
+            self.get_logger().warn(f"지원하지 않는 로봇 운동 모드입니다: {new_mode}")
 
     def get_robot_pose_matrix(self, x, y, z, rx, ry, rz):
         R = Rotation.from_euler("ZYZ", [rx, ry, rz], degrees=True).as_matrix()
@@ -233,7 +244,9 @@ class PostureCorrector(Node):
         return np.dot(base2cam, coord)[:3]
 
     def correction_target_callback(self, msg):
-        if self.is_moving or msg.z <= 0:
+        global g_is_supporting
+        # [추가] 지지 중(g_is_supporting)일 때 새로운 3D 좌표 입력을 무시하도록 조건 추가
+        if self.is_moving or g_is_supporting or msg.z <= 0:
             return
 
         self.is_moving = True
@@ -249,7 +262,7 @@ class PostureCorrector(Node):
                 strategy.execute_assist(td_coord)
 
         except Exception as e:
-            self.get_logger().error(f"❌ 교정 동작 중 에러: {e}")
+            self.get_logger().error(f"교정 동작 중 에러: {e}")
         finally:
             self.is_moving = False
 
@@ -257,12 +270,10 @@ class PostureCorrector(Node):
         JReady = [0, 0, 90, 0, 90, 0]
         movej(JReady, vel=VELOCITY, acc=ACC)
         
-        # 💡 [수정] 하드코딩된 부분 대신 방금 만든 move_to_init_pos 함수 활용
         self.move_to_init_pos()
         
         gripper.close_gripper()
         mwait()
-
 
 def main(args=None):
     node = PostureCorrector()
