@@ -24,22 +24,25 @@ class SystemController(Node):
     def command_callback(self, msg):
         """음성 비서에서 퍼블리시한 문자열 명령을 받아 분기 처리"""
         command = msg.data
-        self.get_logger().info(f"📥 수신된 명령: {command}")
+        self.get_logger().info(f"수신된 명령: {command}")
 
         if command == "START_EXERCISE":
-            self.get_logger().info("▶️ '운동 시작' 명령 확인 -> 비전 노드 로깅 On 요청")
+            self.get_logger().info("'운동 시작' 명령 확인 -> 비전 노드 로깅 On 요청")
             self.call_set_exercise_state(True)
             
-        elif command == "REPORT_EXERCISE":
-            self.get_logger().info("⏹️ '운동 종료' 명령 확인 -> 비전 노드 로깅 Off 요청")
+        elif command == "END_EXERCISE": # [추가] 운동 명시적 종료
+            self.get_logger().info("'운동 종료' 명령 확인 -> 비전 노드 로깅 Off 요청")
             self.call_set_exercise_state(False)
             
+        elif command == "REPORT_EXERCISE": # [수정] 상태 변경 로직 제거, 단순 로깅 확인용
+            self.get_logger().info("'운동 기록 조회' 명령 확인 -> 상태 유지")
+            
         elif command == "CORRECTION":
-            self.get_logger().info("🎯 '자세 교정' 명령 확인 -> 비전 노드에 3D 좌표 발행 요청")
+            self.get_logger().info("'자세 교정' 명령 확인 -> 비전 노드에 3D 좌표 발행 요청")
             self.call_publish_target_3d()
             
         else:
-            self.get_logger().warn(f"❓ 알 수 없는 명령입니다: {command}")
+            self.get_logger().warn(f"알 수 없는 명령입니다: {command}")
 
     def call_set_exercise_state(self, state):
         """비전 노드의 운동 상태 On/Off 서비스 호출"""

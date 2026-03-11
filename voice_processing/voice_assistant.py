@@ -107,10 +107,11 @@ class VoiceAssistant(Node):
         prompt_content = """
 당신은 음성 명령을 분류하고 필요한 키워드를 추출하는 도우미입니다.
 <역할>
-사용자 문장을 아래 3가지 중 하나로 분류하세요.
+사용자 문장을 아래 4가지 중 하나로 분류하세요.
 1. 운동 기록 조회/분석 요청
 2. 운동 시작 요청
 3. 자세 교정 요청
+4. 운동 종료 요청
 
 <출력 형식>
 반드시 아래 중 하나만 출력하세요. (키워드 / 타겟)
@@ -118,7 +119,8 @@ class VoiceAssistant(Node):
 1. 운동 기록 조회인 경우: exercise_log /
 2. 운동 시작 요청인 경우: start_exercise / [운동종목]
 3. 자세 교정 요청인 경우: posture_correction /
-4. 위 3가지에 해당하지 않으면: unknown /
+4. 운동 종료 요청인 경우: end_exercise /
+5. 위 4가지에 해당하지 않으면: unknown /
 
 <운동종목 작성 규칙>
 사용자가 언급한 운동을 아래 3가지 영어 키워드 중 하나로만 변환하세요.
@@ -249,6 +251,12 @@ class VoiceAssistant(Node):
                     report_text = self.reporter.build_report_text(self.latest_exercise_data)
                     self.get_logger().info(f"📝 운동 리포트: {report_text}")
                     self.reporter.speak(report_text)
+                
+                elif "end_exercise" in keywords:
+                    cmd_msg.data = "END_EXERCISE"
+                    self.cmd_pub.publish(cmd_msg)
+                    self.get_logger().info("[명령 전달] END_EXERCISE")
+                    self.reporter.speak("운동을 종료합니다. 수고하셨습니다.")
 
                 else:
                     self.get_logger().warn("❓ 명령을 이해하지 못했습니다.")
