@@ -1,0 +1,156 @@
+/* style.css */
+
+/* 1. 기본 배경: 눈이 편안하고 차분한 밝은 그레이 톤 */
+body { 
+    background-color: #f1f3f5; 
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+}
+
+/* 2. 헤더 타이틀: 'Silver Health Club'에 맞춘 고급스러운 실버 그라데이션 */
+.header-title { 
+    /* 미디엄 실버에서 라이트 실버로 이어지는 입체적인 그라데이션 */
+    background: linear-gradient(45deg, #bdbdbd, #f5f5f5); 
+    background-clip: text; 
+    -webkit-background-clip: text; 
+    -webkit-text-fill-color: transparent;
+    font-weight: 900; 
+    font-size: 2.2rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+}
+
+/* 헤더 우측 "금메달 트로피" -> 세련된 실버 트로피로 변경 */
+.header-title::after {
+    content: '\f091'; /* FontAwesome 트로피 아이콘 */
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+    margin-left: 15px;
+    color: #bdbdbd; /* 미디엄 실버 */
+    -webkit-text-fill-color: initial; /* 텍스트 그라데이션 영향 차단 */
+}
+
+/* 3. 카드 (머신): 단단한 금속 덤벨 느낌 */
+.card { 
+    border: 2px solid #e0e0e0; 
+    border-radius: 16px; 
+    box-shadow: 0 8px 20px rgba(0,0,0,0.08); 
+    margin-bottom: 25px; 
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* 마우스를 올리면 실버 아우라가 뿜어져 나오는 효과 */
+.card:hover {
+    transform: translateY(-6px); 
+    box-shadow: 0 12px 25px rgba(189, 189, 189, 0.3); /* 실버 그림자 */
+    border-color: #bdbdbd; /* 실버 테두리 */
+}
+
+/* 4. 카드 헤더: 묵직한 다크 그레이 배경에 실버 포인트 라인 */
+.card-header { 
+    background: #343a40; /* 묵직한 다크 그레이 */
+    color: #ffffff;
+    border-bottom: 4px solid #bdbdbd; /* 하단 테두리를 실버로 */
+    font-weight: 800; 
+    font-size: 1.3rem;
+    padding: 15px 20px; 
+    border-radius: 14px 14px 0 0 !important; 
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* 5. 핵심 지표 (수치): 시원시원하게 유지 */
+.metric-value { 
+    font-size: 4rem; 
+    font-weight: 900; 
+    font-family: 'Impact', 'Arial Black', sans-serif;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.15);
+}
+
+/* 6. 색상 테마: 차가운 실버와 완벽한 조화를 이루는 선명한 포인트 컬러 */
+.text-blue { color: #1E90FF; } /* 선명한 코발트 블루 (실버의 보색격) */
+.text-green { color: #2E8B57; } /* 활력의 그린 유지 */
+.text-orange { color: #FF4500; } /* 열정의 오렌지 유지 */
+
+/* 7. 경고 항목 */
+.warning-item { 
+    display: flex; 
+    justify-content: space-between; 
+    padding: 12px 0; 
+    border-bottom: 2px dashed #ffb3b3; 
+    font-size: 1.15rem;
+    font-weight: 700;
+}
+
+.warning-item:last-child { 
+border-bottom: none; 
+}
+
+/* =========================================
+   💪 근육 펌핑 애니메이션 (실버 포인트로 변경)
+   ========================================= */
+@keyframes flexMuscle {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.15); color: #e0e0e0; text-shadow: 0 0 15px rgba(224, 224, 224, 0.8); } /* 골드를 밝은 실버로 */
+    100% { transform: scale(1); }
+}
+
+.muscle-pump {
+    display: inline-block;
+    animation: flexMuscle 0.6s ease-in-out infinite;
+}
+
+/* style.css (기존 내용 유지 후 아래 내용 추가) */
+
+/* 듀얼 카메라 뷰 스타일 */
+.cam-container {
+    position: relative;
+    width: 100%;
+    border-radius: 10px;
+    overflow: hidden;
+    background-color: #2c3e50;
+    border: 3px solid #bdbdbd;
+}
+.cam-stream {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+.cam-label {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: rgba(0, 0, 0, 0.7);
+    color: #00ff00;
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-weight: bold;
+    z-index: 10;
+}
+
+/* AI 상태창 및 자막 */
+.ai-subtitle-container {
+    background-color: rgba(30, 144, 255, 0.1);
+    border-left: 5px solid #1E90FF;
+    border-radius: 8px;
+    padding: 15px 20px;
+}
+.ai-status-badge {
+    font-size: 0.9rem;
+    padding: 5px 10px;
+    margin-bottom: 8px;
+    display: inline-block;
+}
+
+/* 리포트 모달 스타일 */
+.score-badge {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: white;
+}

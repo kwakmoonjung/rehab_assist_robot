@@ -15,6 +15,8 @@ def generate_launch_description():
     common_args = {
         'depth_module.depth_profile': '848x480x30',
         'rgb_camera.color_profile': '1280x720x30',
+        # 'depth_module.depth_profile': '640x480x30',
+        # 'rgb_camera.color_profile': '640x480x30',
         'initial_reset': 'true',
         'align_depth.enable': 'true',
         'enable_rgbd': 'true',
@@ -23,8 +25,10 @@ def generate_launch_description():
 
     # ⭐️ [수정] USB 2.1 연결 카메라용 해상도 설정 (기능은 모두 true로, 데이터량은 최소로!)
     fixed_override_args = {
-        'depth_module.depth_profile': '640x480x15', # USB 2.1 한계 타협점 (15 프레임)
-        'rgb_camera.color_profile': '640x480x15',   # USB 2.1 한계 타협점 (15 프레임)
+        'depth_module.depth_profile': '848x480x30', # USB 2.1 한계 타협점 (15 프레임)
+        'rgb_camera.color_profile': '1280x720x30',   # USB 2.1 한계 타협점 (15 프레임)
+        # 'depth_module.depth_profile': '640x480x30', # USB 2.1 한계 타협점 (15 프레임)
+        # 'rgb_camera.color_profile': '640x480x30',   # USB 2.1 한계 타협점 (15 프레임)
         'enable_depth': 'true',          # 요청대로 복구
         'align_depth.enable': 'true',    # 요청대로 복구
         'enable_rgbd': 'true',           # 요청대로 복구
@@ -48,7 +52,7 @@ def generate_launch_description():
         launch_arguments={
             **common_args,
             **fixed_override_args,  # 고정 카메라 해상도 덮어쓰기 적용
-            'serial_no': '_215322078366',
+            'serial_no': '_147122075430',
             'camera_namespace': 'fixed',
             'camera_name': 'camera'
         }.items()
