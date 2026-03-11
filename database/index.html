@@ -10,6 +10,17 @@
     
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <style>
+        /* 리포트 부록(DB 파라미터)용 텍스트 스타일 */
+        .param-table th { background-color: #343a40 !important; color: white !important; font-size: 0.9rem; text-align: center; vertical-align: middle; }
+        .param-table td { font-size: 0.85rem; vertical-align: middle; padding: 10px; }
+        .param-code { background-color: #f1f3f5; padding: 3px 8px; border-radius: 4px; font-family: monospace; color: #d63384; font-weight: bold; font-size: 0.85rem;}
+        .param-category { background-color: #e9ecef !important; font-weight: bold; color: #495057 !important; text-align: left !important; padding-left: 15px !important; }
+        /* 산출 방식 박스 스타일 */
+        .calc-box { font-size: 0.8rem; background-color: #ffffff; border-radius: 6px; padding: 8px; margin-top: 10px; line-height: 1.4; color: #495057;}
+    </style>
 </head>
 <body>
 
@@ -20,11 +31,14 @@
             <small class="text-muted fw-bold" id="sys_subtitle">대기 중... 운동을 선택해주세요.</small> 
         </div>
         <div class="d-flex align-items-center">
+            <span class="badge bg-dark p-2 fs-6 me-2" id="session-timer-display" style="display: none;">
+                <i class="fas fa-stopwatch text-warning"></i> <span id="session-time">00:00</span>
+            </span>
             <span class="badge bg-secondary p-2 fs-6 me-3" id="connection-status">
                 <i class="fas fa-spinner fa-spin"></i> 연결 대기 중...
             </span>
             <button id="btn_show_report" class="btn btn-success btn-lg me-2 shadow-sm" data-bs-toggle="modal" data-bs-target="#reportModal">
-                <i class="fas fa-chart-pie"></i> 운동 성장 리포트
+                <i class="fas fa-file-medical-alt"></i> 맞춤형 운동 리포트
             </button>
             <button id="btn_toggle_admin" class="btn btn-outline-secondary" title="엔지니어링 설정">
                 <i class="fas fa-cog"></i>
@@ -61,7 +75,7 @@
             <div class="card h-100 bg-dark text-white shadow-sm border-0">
                 <div class="card-header py-1 fs-7 bg-secondary"><i class="fas fa-video"></i> 정면 (FIXED CAM)</div>
                 <div class="card-body p-0 d-flex align-items-center overflow-hidden" style="min-height: 200px; background-color: #1a1a1a;">
-                    <img src="http://192.168.1.32:8080/stream?topic=/fixed/camera/color/image_raw&type=mjpeg&width=640&height=480" class="w-100" onerror="this.src='https://via.placeholder.com/640x480?text=Fixed+Cam+OFF'">
+                    <img src="http://192.168.10.29:8080/stream?topic=/fixed/camera/color/image_raw&type=mjpeg&width=640&height=480" class="w-100" onerror="this.src='https://via.placeholder.com/640x480?text=Fixed+Cam+OFF'">
                 </div>
             </div>
         </div>
@@ -69,7 +83,7 @@
             <div class="card h-100 bg-dark text-white shadow-sm border-0">
                 <div class="card-header py-1 fs-7 bg-secondary"><i class="fas fa-video"></i> 측면 (ROBOT CAM)</div>
                 <div class="card-body p-0 d-flex align-items-center overflow-hidden" style="min-height: 200px; background-color: #1a1a1a;">
-                    <img src="http://192.168.1.32:8080/stream?topic=/robot/camera/color/image_raw&type=mjpeg&width=640&height=480" class="w-100" onerror="this.src='https://via.placeholder.com/640x480?text=Robot+Cam+OFF'">
+                    <img src="http://192.168.10.29:8080/stream?topic=/robot/camera/color/image_raw&type=mjpeg&width=640&height=480" class="w-100" onerror="this.src='https://via.placeholder.com/640x480?text=Robot+Cam+OFF'">
                 </div>
             </div>
         </div>
@@ -78,7 +92,7 @@
                 <div class="card-header py-1 fs-7 fw-bold text-center"><i class="fas fa-child"></i> 집중 자극 부위</div>
                 <div class="card-body p-0 d-flex justify-content-center align-items-center" style="min-height: 200px;">
                     <div class="anatomy-container">
-                        <i class="fas fa-male"></i>
+                        <i class="fas fa-male text-muted" style="font-size: 140px; opacity: 0.3;"></i>
                         <div id="dot_lat_left" class="glowing-dot"></div>
                         <div id="dot_lat_right" class="glowing-dot"></div>
                         <div id="dot_press_left" class="glowing-dot"></div>
@@ -132,45 +146,298 @@
             </div>
         </div>
     </div>
-
-    <div id="admin_panel" style="display: none; margin-top: 20px;">
-        <div class="alert alert-dark fw-bold py-2"><i class="fas fa-terminal"></i> Engineering Metrics (Debug Only)</div>
-        <div class="row g-3 text-center">
-            <div class="col-4"><div class="card p-2">목표교정각도: <span id="target_prom">0</span></div></div>
-            <div class="col-4"><div class="card p-2">정자세비율: <span id="good_posture_ratio">0</span>%</div></div>
-            <div class="col-4"><div class="card p-2">전체프레임: <span id="metric_val_3">0</span></div></div>
-        </div>
-    </div>
 </div>
 
 <div class="modal fade" id="reportModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content" style="border-radius: 20px;">
-            <div class="modal-header bg-success text-white">
-                <h4 class="modal-title fw-bold"><i class="fas fa-trophy text-warning"></i> 나의 운동 성장 리포트</h4>
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content" style="background-color: #f0f2f5;">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title fw-bold"><i class="fas fa-file-medical-alt text-success"></i> 전문 임상 분석 리포트</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body text-center p-4">
-                <h2 class="mb-4">종합 점수: <span class="text-success fw-bold" id="report_total_score">0</span> / 100</h2>
-                <div class="row">
-                    <div class="col-md-6"><canvas id="reportRadarChart"></canvas></div>
-                    <div class="col-md-6 text-start d-flex flex-column justify-content-center">
-                        <div class="mb-4">
-                            <h5 class="fw-bold text-primary">💪 관절 가동성 (50점)</h5>
-                            <div class="progress mb-2" style="height: 12px;"><div id="bar_mobility" class="progress-bar bg-primary" style="width: 0%"></div></div>
-                            <p id="desc_mobility" class="small text-muted">분석 중...</p>
+            
+            <div class="modal-body p-4">
+                <div id="printable_report" class="bg-white mx-auto shadow-sm p-5" style="max-width: 210mm; min-height: 297mm; color: #333;">
+                    
+                    <div class="border-bottom border-3 border-dark pb-3 mb-4 d-flex justify-content-between align-items-end">
+                        <div>
+                            <h2 class="fw-bold mb-1" style="letter-spacing: -1px;">맞춤형 운동 성장 리포트</h2>
+                            <h5 class="text-secondary mb-0"><i class="fas fa-robot text-primary"></i> SILVER HEALTH CLUB</h5>
                         </div>
-                        <div class="mb-4">
-                            <h5 class="fw-bold text-warning">⚖️ 자세 안정성 (50점)</h5>
-                            <div class="progress mb-2" style="height: 12px;"><div id="bar_stability" class="progress-bar bg-warning" style="width: 0%"></div></div>
-                            <p id="desc_stability" class="small text-muted">분석 중...</p>
+                        <div class="text-end">
+                            <p class="mb-0 fs-5"><strong>회원명:</strong> <span id="report_user_name">익명 회원님</span></p>
+                            <p class="mb-0 text-muted" style="font-size: 0.9rem;"><strong>검사일시:</strong> <span id="report_date">2026-03-11</span></p>
                         </div>
                     </div>
+
+                    <div class="mb-4">
+                        <h5 class="fw-bold text-dark border-start border-4 border-primary ps-2 mb-3">1. 핵심 종합 지표 산출 가이드</h5>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <div class="p-3 bg-light rounded h-100 d-flex flex-column border border-light shadow-sm">
+                                    <h6 class="fw-bold text-primary mb-2"><i class="fas fa-child"></i> 관절 가동성 (Mobility)</h6>
+                                    <p class="small text-muted mb-2">안전하게 도달할 수 있는 최대 관절 각도를 의미합니다. 이 점수가 높을수록 일상생활의 활동 반경이 넓어집니다.</p>
+                                    <div class="calc-box border-primary border-start border-3 mt-auto">
+                                        <strong class="text-primary"><i class="fas fa-calculator"></i> 계산 방식 (50점 배점)</strong><br>
+                                        운동별 핵심 관절의 실제 도달 각도를 목표 기준치(예: 사레레 80°, 숄더프레스 145°)와 비교하여 비율에 따라 점수를 환산합니다.
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="p-3 bg-light rounded h-100 d-flex flex-column border border-light shadow-sm">
+                                    <h6 class="fw-bold text-warning mb-2"><i class="fas fa-balance-scale"></i> 자세 안정성 (Stability)</h6>
+                                    <p class="small text-muted mb-2">운동 중 몸통 흔들림이나 반동을 통제하는 능력입니다. 안정성이 높을수록 부상 및 낙상 위험이 감소합니다.</p>
+                                    <div class="calc-box border-warning border-start border-3 mt-auto">
+                                        <strong class="text-warning" style="color: #d39e00 !important;"><i class="fas fa-calculator"></i> 계산 방식 (50점 배점)</strong><br>
+                                        기본 50점에서 시작하여, AI가 <b>허리 반동, 양팔 불균형, 이탈</b> 등의 부적절한 자세 경고를 감지할 때마다 1회당 10점씩 감점하여 산출합니다.
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="p-3 bg-light rounded h-100 d-flex flex-column border border-light shadow-sm">
+                                    <h6 class="fw-bold text-success mb-2"><i class="fas fa-bullseye"></i> 정자세 정확도 (Accuracy)</h6>
+                                    <p class="small text-muted mb-2">목적에 맞는 완벽한 자세를 유지한 시간의 비율입니다. 정확도가 높을수록 타겟 근육에 올바른 자극이 전달됩니다.</p>
+                                    <div class="calc-box border-success border-start border-3 mt-auto">
+                                        <strong class="text-success"><i class="fas fa-calculator"></i> 계산 방식 (지표 직접 반영)</strong><br>
+                                        비전 센서가 분석한 전체 유효 프레임 중, 흔들림이나 보상 작용 없이 타겟 근육에 올바른 부하가 걸린 정자세 시간의 <b>비율(%)을 그대로 반영</b>합니다.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <h5 class="fw-bold text-dark border-start border-4 border-primary ps-2 mb-3">2. 종합 분석 결과</h5>
+                        <div class="row align-items-center border rounded p-3 m-0 bg-white shadow-sm">
+                            <div class="col-md-5 text-center border-end py-4">
+                                <div class="fw-bold" style="font-size: 3rem; white-space: nowrap;">
+                                    <span class="text-success" id="report_total_score">0</span>
+                                    <span class="text-secondary"> / 100 점</span>
+                                </div>
+                                <small class="text-muted d-block mt-2">가동성 점수 + 안정성 점수 합산</small>
+                            </div>
+                            <div class="col-md-7 d-flex justify-content-center">
+                                <canvas id="reportRadarChart" style="max-height: 250px;"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <h5 class="fw-bold text-dark border-start border-4 border-primary ps-2 mb-3" id="report_exercise_title">3. 세부 지표 및 타겟 부위 분석</h5>
+                        <div class="row g-3">
+                            <div class="col-md-8">
+                                <table class="table table-bordered table-sm text-center align-middle" style="font-size: 0.90rem;">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th width="20%">평가 항목</th>
+                                            <th width="40%">세부 지표</th>
+                                            <th width="20%">측정 결과</th>
+                                            <th width="20%">목표 / 참고치</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="report_table_body">
+                                        <tr><td colspan="4" class="py-3 text-muted">데이터를 분석 중입니다...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            
+                            <div class="col-md-4 d-flex flex-column">
+                                <div class="card shadow-sm border-0 bg-light flex-grow-1">
+                                    <div class="card-header py-2 fs-6 fw-bold text-center bg-secondary text-white"><i class="fas fa-child"></i> 집중 자극 부위</div>
+                                    <div class="card-body p-0 d-flex justify-content-center align-items-center" style="min-height: 250px; background-color: #ffffff; overflow: hidden; text-align: center;">
+                                        <div style="position: relative; display: inline-block;">
+                                            
+                                            <div id="report_anatomy_placeholder" class="text-muted" style="padding-top: 100px; font-size: 0.9rem;">
+                                                <i class="fas fa-info-circle mb-2 fs-4 opacity-50 d-block"></i>운동 데이터 대기 중
+                                            </div>
+
+                                            <img src="images/body_outline_shoulder.png" id="report_anatomy_img" alt="Human Anatomy" style="height: 210px; opacity: 1.0; display: none;" 
+                                                 onerror="this.onerror=null; this.src='https://www.svgrepo.com/show/308194/human-body-anatomy-health-medical.svg';">
+                                            
+                                            <div id="report_dot_lat_left" class="glowing-dot" style="position: absolute; top: 38%; left: 30%; display: none;"></div>
+                                            <div id="report_dot_lat_right" class="glowing-dot" style="position: absolute; top: 38%; right: 30%; display: none;"></div>
+                                            <div id="report_dot_press_left" class="glowing-dot" style="position: absolute; top: 33%; left: 35%; display: none;"></div>
+                                            <div id="report_dot_press_right" class="glowing-dot" style="position: absolute; top: 33%; right: 35%; display: none;"></div>
+                                            <div id="report_dot_curl_left" class="glowing-dot" style="position: absolute; top: 56%; left: 32%; display: none;"></div>
+                                            <div id="report_dot_curl_right" class="glowing-dot" style="position: absolute; top: 56%; right: 32%; display: none;"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <h5 class="fw-bold text-dark border-start border-4 border-primary ps-2 mb-3">4. AI 트레이너 종합 처방</h5>
+                        <div class="alert alert-primary bg-white border-primary border-2 p-3">
+                            <p id="report_ai_comment" class="mb-0 fs-6 text-dark lh-lg fw-medium">AI 분석 대기 중...</p>
+                        </div>
+                    </div>
+
+                    <div style="page-break-before: always; padding-top: 20px;">
+                        <h5 class="fw-bold text-dark border-start border-4 border-secondary ps-2 mb-3">부록. 데이터베이스 파라미터 사전 (Parameter Glossary)</h5>
+                        <p class="text-muted small mb-3">본 리포트 및 Firebase 데이터베이스에 실시간으로 기록되는 각 변수명(Parameter)의 임상적/시스템적 의미를 정의합니다.</p>
+                        
+                        <table class="table table-bordered param-table shadow-sm">
+                            <thead>
+                                <tr>
+                                    <th width="32%">DB 변수명 (Parameter)</th>
+                                    <th width="68%">임상적 의미 및 설명 (Description)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td colspan="2" class="param-category"><i class="fas fa-server text-secondary"></i> 세션 및 시스템 메타데이터 (System Metadata)</td></tr>
+                                <tr>
+                                    <td><span class="param-code">exercise_type</span></td>
+                                    <td>진행된 운동의 종류를 나타냅니다. (<span class="text-primary">bicep_curl</span>, <span class="text-primary">lateral_raise</span>, <span class="text-primary">shoulder_press</span>)</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">rep_count</span></td>
+                                    <td>센서가 완전히 끝난 것으로 인식한 총 반복 수행(Repetition) 횟수입니다.</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">session_started_at</span></td>
+                                    <td>명령에 따라 운동 로깅이 최초로 시작된 타임스탬프입니다.</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">session_duration_sec</span></td>
+                                    <td>해당 세션이 진행된 총 시간(초)입니다.</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">last_updated_at</span></td>
+                                    <td>Firebase 서버에 해당 세션의 데이터가 마지막으로 업데이트된 시간입니다.</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">last_feedback</span></td>
+                                    <td>세션 종료 전, 시스템이 사용자에게 마지막으로 출력한 음성/텍스트 피드백입니다.</td>
+                                </tr>
+
+                                <tr><td colspan="2" class="param-category mt-2"><i class="fas fa-camera text-secondary"></i> 비전 분석 지표 (Frame Analysis)</td></tr>
+                                <tr>
+                                    <td><span class="param-code">frame_count</span></td>
+                                    <td>세션이 진행되는 동안 카메라가 포착하여 DB에 전송한 전체 프레임 수입니다.</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">analyzed_frame_count</span></td>
+                                    <td>가림 현상 없이 신체가 정상적으로 인식되어 AI 관절 분석에 사용된 유효 프레임 수입니다.</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">ignored_frame_count</span></td>
+                                    <td>신체 일부가 카메라 밖으로 벗어나거나 가려져서 분석에서 누락시킨 프레임 수입니다.</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">good_frame_count</span></td>
+                                    <td><b>[비전]</b> 분석된 유효 프레임 중, 흔들림이나 보상작용 없이 타겟 근육에 올바른 부하가 걸린 '완벽한 정자세'로 판정된 프레임의 수입니다.</td>
+                                </tr>
+
+                                <tr><td colspan="2" class="param-category mt-2"><i class="fas fa-robot text-secondary"></i> 로봇 제어 및 재활 특화 지표 (Robot Assist & Elderly PT Metrics)</td></tr>
+                                <tr>
+                                    <td><span class="param-code">pure_arom</span></td>
+                                    <td><b>[사레레]</b> 로봇 보조(모터 힘) 없이 순수하게 환자 본인의 근력(능동 관절 가동범위)으로만 도달한 최고 각도입니다.</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">target_prom</span></td>
+                                    <td><b>[사레레]</b> 로봇의 보조를 받아 도달하고자 하는 최종 목표 수동 관절 가동범위(각도)입니다.</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">assist_trigger_angle</span></td>
+                                    <td><b>[사레레]</b> 어르신의 힘이 부족하여 로봇이 근력 보조 개입을 시작한 임계 각도입니다.</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">max_z_depth_drift_mm</span></td>
+                                    <td><b>[사레레]</b> 운동 중 팔이나 상체가 앞뒤(카메라 깊이 Z축 방향)로 흔들린 최대 변동량(mm)입니다.</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">tremor_count</span></td>
+                                    <td><b>[사레레]</b> 관절이 부하를 버티지 못하고 떨리는(미세 떨림) 현상이 감지된 횟수입니다.</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">avg_rep_duration_sec</span></td>
+                                    <td><b>[사레레]</b> 1회 동작(수축 및 이완)을 수행하는 데 걸린 평균 소요 시간(초)입니다.</td>
+                                </tr>
+
+                                <tr><td colspan="2" class="param-category mt-2"><i class="fas fa-drafting-compass text-secondary"></i> 부위별 각도 및 정확도 지표 (Kinematics Data)</td></tr>
+                                <tr>
+                                    <td><span class="param-code">good_posture_ratio</span></td>
+                                    <td><b>[공통]</b> 전체 수행 시간 중 보상작용 없이 완벽한 정자세를 유지한 백분율(%)입니다.</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">avg_trunk_angle</span></td>
+                                    <td><b>[공통]</b> 상체(척추)가 흔들리거나 기울어진 평균 각도입니다. 무거운 무게를 들거나 위로 밀어 올릴 때 이 수치가 5°를 초과하면 허리 반동(Cheat)을 사용하고 있음을 의미합니다.</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">max_rom_left / _right</span></td>
+                                    <td><b>[사레레]</b> 좌/우측 어깨의 최대 외전(Abduction) 가동 범위입니다. (목표 80~90°)</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">avg_successful_peak_angle</span></td>
+                                    <td><b>[사레레]</b> 목표 각도에 도달하여 '성공'으로 판정된 동작들의 평균 최고 각도입니다.</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">avg_all_peak_angle</span></td>
+                                    <td><b>[사레레]</b> 성공 여부와 무관하게 운동 중 도달한 전체 최고 각도의 평균입니다.</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">avg_elbow_angle</span></td>
+                                    <td><b>[바벨컬/숄더프레스]</b> 수축 및 이완 시 팔꿈치가 이루는 내각의 평균입니다. 숄더프레스 시 최고점에서 팔꿈치가 완전히 펴진 각도를 의미합니다. (프레스 목표 160° 이상 / 바벨컬 목표 50° 이하)</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">avg_shoulder_angle</span></td>
+                                    <td><b>[숄더프레스]</b> 상완을 밀어 올릴 때 어깨 관절이 상향으로 펴진 평균 굽힘(Flexion) 각도입니다. (목표 145° 이상)</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">avg_upper_arm_angle</span></td>
+                                    <td><b>[바벨컬]</b> 상완(위팔)이 수직선에서 벗어난 각도입니다. (수치가 클수록 팔꿈치 들썩임 발생)</td>
+                                </tr>
+
+                                <tr><td colspan="2" class="param-category mt-2"><i class="fas fa-exclamation-triangle text-secondary"></i> 자세 경고 카운트 (Warning Counts)</td></tr>
+                                <tr>
+                                    <td><span class="param-code">too_low</span></td>
+                                    <td><b>[숄더프레스]</b> 바벨이나 덤벨을 어깨선(기준선)보다 과도하게 아래로 내려 어깨 관절에 무리를 준 횟수입니다.</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">bend_elbows_at_bottom</span></td>
+                                    <td><b>[숄더프레스]</b> 팔을 내리는 이완 동작 시, 기준선 아래에서 팔꿈치를 굽히며 근육의 긴장을 푸는 보상 작용이 발생한 횟수입니다.</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">arms_too_high</span></td>
+                                    <td><b>[사레레]</b> 팔을 어깨선(90°) 이상으로 과도하게 높이 들어 올려 어깨 충돌 위험이 발생한 횟수입니다.</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">chest_down</span></td>
+                                    <td><b>[사레레]</b> 운동 중 가슴이 말리거나 등이 굽어 자세가 무너진 횟수입니다.</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">lean_back_momentum</span></td>
+                                    <td><b>[사레레]</b> 무게를 들기 위해 상체를 뒤로 젖히며 허리 반동(Cheat)을 사용한 횟수입니다.</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">elbows_not_close_to_body</span></td>
+                                    <td><b>[바벨컬]</b> 팔꿈치가 옆구리에서 바깥으로 심하게 벌어지며 이두근 고립이 풀린 횟수입니다.</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">arm_balance_issue</span></td>
+                                    <td><b>[공통]</b> 중량을 들어 올릴 때 좌/우측 팔의 속도나 도달 높이가 눈에 띄게 차이 난 횟수입니다.</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">body_not_straight</span></td>
+                                    <td><b>[공통]</b> 무거운 무게를 밀어 올리기 위해 무의식적으로 척추를 뒤로 젖히거나 옆으로 꺾는 등 상체 정렬이 무너진 횟수입니다.</td>
+                                </tr>
+                                <tr>
+                                    <td><span class="param-code">arms_not_visible</span></td>
+                                    <td><b>[비전]</b> 로봇 팔이나 외부 요인에 의해 팔이 카메라에 가려져 관절 추적이 끊긴 횟수입니다.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-                <div class="alert alert-info mt-3 text-start">
-                    <h6 class="fw-bold"><i class="fas fa-robot"></i> AI 코멘트</h6>
-                    <p id="report_ai_comment" class="mb-0"></p>
-                </div>
+            </div>
+            
+            <div class="modal-footer justify-content-center bg-white border-top">
+                <button type="button" class="btn btn-secondary btn-lg me-2" data-bs-dismiss="modal">닫기</button>
+                <button type="button" class="btn btn-primary btn-lg" onclick="downloadPDF()">
+                    <i class="fas fa-file-pdf"></i> PDF로 전체 다운로드
+                </button>
             </div>
         </div>
     </div>
@@ -183,5 +450,61 @@
 <script src="js/ui_manager.js"></script>
 <script src="js/database_service.js"></script>
 
+<script>
+function downloadPDF() {
+    const btn = document.querySelector('button[onclick="downloadPDF()"]');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> PDF 생성 중... (약 3~5초 소요)';
+    btn.disabled = true;
+
+    // 1. 원본 요소 가져오기
+    const element = document.getElementById('printable_report');
+
+    // 2. 모달창 무한 로딩 버그를 막기 위해 리포트를 화면 밖으로 완벽히 복제 (Clone)
+    const clonedElement = element.cloneNode(true);
+    const container = document.createElement('div');
+    // 화면에 보이지 않게 숨김 처리 및 A4 사이즈 고정
+    container.style.position = 'absolute';
+    container.style.left = '-9999px';
+    container.style.top = '0';
+    container.style.width = '210mm'; 
+    container.style.background = 'white';
+    container.appendChild(clonedElement);
+    document.body.appendChild(container);
+
+    // 3. Chart.js (레이더 차트) 이미지는 일반 복사로 안 넘어오므로 붓으로 직접 덧그리기
+    const originalCanvases = element.querySelectorAll('canvas');
+    const clonedCanvases = clonedElement.querySelectorAll('canvas');
+    originalCanvases.forEach((canvas, index) => {
+        const ctx = clonedCanvases[index].getContext('2d');
+        ctx.drawImage(canvas, 0, 0);
+    });
+
+    // 4. PDF 변환 설정
+    const dateStr = new Date().toISOString().split('T')[0];
+    const opt = {
+        margin: [10, 0, 10, 0], // 상하 여백 10mm
+        filename: `SilverHealthClub_Report_${dateStr}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+
+    // 5. 복제된 깔끔한 화면(container)을 바탕으로 PDF 생성
+    html2pdf().set(opt).from(container).save().then(() => {
+        // 다운로드가 끝나면 화면 밖의 복제본을 삭제하고 버튼 원상복구
+        document.body.removeChild(container);
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }).catch(err => {
+        // 에러 발생 시 처리
+        console.error("PDF 생성 에러: ", err);
+        document.body.removeChild(container);
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        alert("PDF 생성 중 문제가 발생했습니다. 키보드 F12를 눌러 콘솔 창을 확인해주세요.");
+    });
+}
+</script>
 </body>
 </html>
