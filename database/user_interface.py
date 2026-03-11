@@ -14,13 +14,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ==========================================
-# Firebase 및 OpenAI 설정 
-# ==========================================
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 FIREBASE_KEY_PATH = os.path.join(CURRENT_DIR, "serviceAccountKey.json")
 FIREBASE_DB_URL = "https://rehab-aa1ee-default-rtdb.asia-southeast1.firebasedatabase.app/"
-
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 class RehabUserInterface(Node):
@@ -41,7 +37,6 @@ class RehabUserInterface(Node):
         except Exception as e:
             self.get_logger().error(f"OpenAI 초기화 실패: {e}")
 
-        # 🌟 [수정됨] 운동 세션당 딱 1번만 분석하기 위한 상태 변수
         self.is_analysis_completed = False
 
         self.subscription = self.create_subscription(
@@ -52,14 +47,19 @@ class RehabUserInterface(Node):
         )
         self.get_logger().info("📡 '/exercise_result' 통합 토픽 구독 시작...")
 
+    # 🌟 [업데이트] AIT STUDIO 리포트 수준의 정량화 및 비대칭도 산출 로직
     def calculate_report_scores(self, data):
         ex_type = data.get("exercise_type", "unknown_exercise")
         mobility_score = 0
         stability_score = 50 
+        max_l = 0
+        max_r = 0
         
         if ex_type == 'lateral_raise':
             metrics = data.get("elderly_pt_metrics", {})
-            max_rom = max(metrics.get("max_rom_left", 0), metrics.get("max_rom_right", 0))
+            max_l = metrics.get("max_rom_left", 0)
+            max_r = metrics.get("max_rom_right", 0)
+            max_rom = max(max_l, max_r)
             mobility_score = min(50, (max_rom / 80.0) * 50)
             
             warns = data.get("warning_counts", {})
@@ -69,6 +69,10 @@ class RehabUserInterface(Node):
         elif ex_type == 'shoulder_press':
             avg_shoulder = data.get("avg_shoulder_angle", 0)
             mobility_score = min(50, (avg_shoulder / 145.0) * 50)
+            
+            joints = data.get("realtime_joints", {})
+            max_l = joints.get("left_shoulder", avg_shoulder)
+            max_r = joints.get("right_shoulder", avg_shoulder)
 
             warns = data.get("warning_counts", {})
             arm_balance = warns.get("arm_balance_issue", 0)
@@ -79,34 +83,47 @@ class RehabUserInterface(Node):
             min_elbow = data.get("avg_elbow_angle", 180)
             mobility_score = min(50, ((180 - min_elbow) / (180 - 50.0)) * 50)
             
+            joints = data.get("realtime_joints", {})
+            max_l = joints.get("left_shoulder", min_elbow)
+            max_r = joints.get("right_shoulder", min_elbow)
+            
             warns = data.get("warning_counts", {})
             elbow_not_close = warns.get("elbows_not_close_to_body", 0)
             stability_score = max(0, 50 - (elbow_not_close * 10))
 
-        mob = round(mobility_score)
-        stab = round(stability_score)
+        # 🌟 정자세 정확도 (하드코딩을 실제 데이터로 교체)
+        posture_accuracy = data.get("good_posture_ratio", data.get("performance_stats", {}).get("good_posture_ratio", 80))
+
+        # 🌟 좌우 비대칭도(Asymmetry) 계산: 두 팔의 차이를 백분율로 산출
+        asym_diff = abs(max_l - max_r)
+        highest_rom = max(max_l, max_r)
+        asym_ratio = round((asym_diff / highest_rom) * 100, 1) if highest_rom > 0 else 0.0
 
         return {
-            "mobility_score": mob,
-            "stability_score": stab,
-            "total_score": mob + stab
+            "mobility_score": round(mobility_score),
+            "stability_score": round(stability_score),
+            "posture_accuracy": posture_accuracy,
+            "asymmetry_ratio": asym_ratio,
+            "total_score": round(mobility_score) + round(stability_score)
         }
 
-    # 🌟 [수정됨] 최종 리포트 전용 프롬프트 및 분석 요청 로직
+    # 🌟 OpenAI 프롬프트에 비대칭도와 정자세 비율 정보 추가
     def request_openai_analysis(self, data, report_scores):
         try:
             exercise = data.get("exercise_type", "운동")
             rep = data.get("rep_count", 0)
-            total_score = report_scores.get("total_score", 0)
-            mob_score = report_scores.get("mobility_score", 0)
-            stab_score = report_scores.get("stability_score", 0)
+            total = report_scores.get("total_score", 0)
+            mob = report_scores.get("mobility_score", 0)
+            stab = report_scores.get("stability_score", 0)
+            posture = report_scores.get("posture_accuracy", 0)
+            asym = report_scores.get("asymmetry_ratio", 0)
 
             prompt = f"""
-            당신은 시니어 헬스케어 전문 AI 로봇 트레이너입니다. 어르신의 이번 '{exercise}' 운동 세션이 모두 종료되었습니다.
-            총 {rep}회를 수행했으며, 종합 점수는 100점 만점에 {total_score}점입니다. 
-            (세부 지표: 관절 가동성 {mob_score}/50점, 자세 안정성 {stab_score}/50점)
+            당신은 시니어 헬스케어 전문 AI 로봇 트레이너입니다. 어르신의 이번 '{exercise}' 운동 세션이 종료되었습니다.
+            총 {rep}회를 수행했으며, 종합 점수는 100점 만점에 {total}점입니다. 
+            (세부 지표: 관절 가동성 {mob}/50점, 자세 안정성 {stab}/50점, 정자세 정확도 {posture}%, 좌우 팔 비대칭도 {asym}%)
             
-            이 최종 리포트 데이터를 바탕으로, 어르신에게 따뜻하고 격려하는 말투로 이번 운동에 대한 총평과 다음 번 개선점 1가지를 합쳐서 50자 이내로 코멘트해주세요.
+            이 임상적 리포트 데이터를 바탕으로, 어르신에게 따뜻하고 격려하는 말투로 이번 운동 총평과 개선점 1가지를 합쳐 50자 이내로 코멘트해주세요.
             """
 
             response = self.ai_client.chat.completions.create(
@@ -119,7 +136,6 @@ class RehabUserInterface(Node):
             ai_comment = response.choices[0].message.content.strip()
             self.get_logger().info(f"🤖 최종 AI 분석 완료: {ai_comment}")
 
-            # 생성된 최종 코멘트를 실시간 DB와 아카이브 DB에 모두 업데이트
             live_ref = db.reference('live_current_session')
             live_ref.update({"ai_comment": ai_comment})
             
@@ -142,17 +158,13 @@ class RehabUserInterface(Node):
             raw_start_time = data.get("session_started_at", "default")
             session_key = raw_start_time.replace("-", "").replace(":", "").replace(" ", "_")
             
-            # 1. 아카이브 DB 저장
             db_path = f'{exercise_type}_sessions/{session_key}'
             db_ref = db.reference(db_path)
             db_ref.set(data)
             
-            # 2. UI 실시간 덮어쓰기
             live_ref = db.reference('live_current_session')
             live_ref.update(data)
 
-            # 🌟 3. [OpenAI 트리거 로직 변경] 운동 종료 시점에 딱 한 번만!
-            # ROS 2에서 보내주는 JSON 데이터에 "is_finished": true 가 포함되어 들어올 때 작동합니다.
             is_finished = data.get("is_finished", False)
             
             if is_finished and not self.is_analysis_completed:
@@ -160,7 +172,6 @@ class RehabUserInterface(Node):
                 self.is_analysis_completed = True
                 threading.Thread(target=self.request_openai_analysis, args=(data, report_scores)).start()
 
-            # (새로운 운동이 시작되어 rep_count가 다시 0이나 1로 초기화되면 분석 플래그도 초기화)
             if data.get("rep_count", 0) <= 1 and not is_finished:
                 self.is_analysis_completed = False
 
