@@ -64,30 +64,37 @@ class RehabUserInterface(Node):
         self.get_logger().info("📡 '/exercise_result' 및 '/system_command' 토픽 구독 시작...")
 
     # 🌟 [신규] 시스템 명령어 처리 콜백 함수
+ # 🌟 [수정됨] 시스템 명령어 처리 콜백 함수
+    # 🌟 [수정본] 시스템 명령어 처리 콜백 함수
     def system_command_callback(self, msg):
         command = msg.data.strip()
         self.get_logger().info(f"시스템 명령어 수신: {command}")
         
+        # 🌟 Firebase 실시간 상태 업데이트를 위한 레퍼런스 추가
+        live_ref = db.reference('live_current_session')
+        
         if command == 'START_EXERCISE':
-            # 새 운동 시작 시 플래그 및 데이터 초기화
+            # 내부 변수 초기화
             self.is_analysis_completed = False
             self.last_session_data = None
             self.last_report_scores = None
-            self.get_logger().info("▶️ 새 운동 세션 시작. 분석 플래그 초기화 완료.")
+            
+            # 🌟 [핵심 추가] Firebase에 상태를 써줘야 UI 뱃지가 변합니다!
+            live_ref.update({"system_status": "START_EXERCISE"})
+            self.get_logger().info("▶️ Firebase 상태 업데이트 완료: START_EXERCISE")
             
         elif command == 'END_EXERCISE':
-            # 종료 명령 수신 시 가장 최근에 저장해둔 데이터를 바탕으로 AI 분석 시작
+            # 🌟 [핵심 추가] 운동 종료 상태도 알려줍니다.
+            live_ref.update({"system_status": "END_EXERCISE"})
+            
             if not self.is_analysis_completed and self.last_session_data:
                 self.get_logger().info("🏁 END_EXERCISE 명령 감지! 최종 AI 리포트 생성을 시작합니다...")
                 self.is_analysis_completed = True
                 
-                # 메인 통신이 막히지 않도록 쓰레드로 AI 요청 분리
                 threading.Thread(
                     target=self.request_openai_analysis, 
                     args=(self.last_session_data, self.last_report_scores)
                 ).start()
-            elif not self.last_session_data:
-                self.get_logger().warn("⚠️ END_EXERCISE가 수신되었으나, 분석할 실시간 운동 데이터가 아직 없습니다.")
                 
         elif command == 'REPORT_EXERCISE':
             self.get_logger().info("📊 리포트 출력 명령 수신.")
