@@ -53,15 +53,25 @@
                     <div class="bg-primary text-white rounded-circle d-flex justify-content-center align-items-center me-3 shadow-sm" style="width: 55px; height: 55px;">
                         <i class="fas fa-running fs-3"></i>
                     </div>
-                    <div class="flex-grow-1">
-                        <span class="text-muted fw-bold d-block" style="font-size: 0.9rem;">현재 인식된 운동</span>
-                        <select id="exercise_selector" class="form-select fw-bold text-primary shadow-sm mt-1" style="border: 2px solid #1E90FF; font-size: 1.3rem; border-radius: 8px; background-color: white; pointer-events: none; width: auto;">
-                            <option value="" selected disabled>음성 명령 대기 중...</option>
-                            <option value="lateral_raise">사레레 (Lateral Raise)</option>
-                            <option value="shoulder_press">숄더 프레스 (Shoulder Press)</option>
-                            <option value="bicep_curl">바벨 이두컬 (Bicep Curl)</option>
-                        </select>
+                    <div class="d-flex flex-grow-1 align-items-center gap-4">
+                        <div>
+                            <span class="text-muted fw-bold d-block" style="font-size: 0.9rem;">현재 인식된 운동</span>
+                            <select id="exercise_selector" class="form-select fw-bold text-primary shadow-sm mt-1" style="border: 2px solid #1E90FF; font-size: 1.3rem; border-radius: 8px; background-color: white; pointer-events: none; width: auto;">
+                                <option value="" selected disabled>음성 명령 대기 중...</option>
+                                <option value="lateral_raise">사레레 (Lateral Raise)</option>
+                                <option value="shoulder_press">숄더 프레스 (Shoulder Press)</option>
+                                <option value="bicep_curl">바벨 이두컬 (Bicep Curl)</option>
+                            </select>
+                        </div>
+
+                        <div class="border-start ps-4">
+                            <span class="text-muted fw-bold d-block" style="font-size: 0.9rem;">로봇 시스템 상태</span>
+                            <span id="robot_system_status" class="badge bg-secondary p-2 mt-1 fs-5 shadow-sm">
+                                <i class="fas fa-power-off"></i> 시스템 대기 중
+                            </span>
+                        </div>
                     </div>
+                    
                     <div class="text-end border-start ps-4">
                         <i class="fas fa-microphone-alt text-danger blinking-icon fs-1"></i>
                     </div>
@@ -75,8 +85,7 @@
             <div class="card h-100 bg-dark text-white shadow-sm border-0">
                 <div class="card-header py-1 fs-7 bg-secondary"><i class="fas fa-video"></i> 정면 (FIXED CAM)</div>
                 <div class="card-body p-0 d-flex align-items-center overflow-hidden" style="min-height: 200px; background-color: #1a1a1a;">
-                    <img src="http://localhost:8080/stream?topic=/fixed/camera/color/image_raw" class="w-100" onerror="this.src='https://via.placeholder.com/640x480?text=Fixed+Cam+OFF'">
-                    <img src="http://192.168.1.32:8080/stream?topic=/fixed/camera/color/image_raw&type=mjpeg&width=640&height=480" class="w-100" style="display:none;" onerror="this.src='https://via.placeholder.com/640x480?text=Fixed+Cam+OFF'">
+                    <div class="text-white w-100 text-center fw-bold">영상 전송 중단됨 (디버깅 모드)</div>
                 </div>
             </div>
         </div>
@@ -84,8 +93,7 @@
             <div class="card h-100 bg-dark text-white shadow-sm border-0">
                 <div class="card-header py-1 fs-7 bg-secondary"><i class="fas fa-video"></i> 측면 (ROBOT CAM)</div>
                 <div class="card-body p-0 d-flex align-items-center overflow-hidden" style="min-height: 200px; background-color: #1a1a1a;">
-                    <img src="http://localhost:8080/stream?topic=/robot/camera/color/image_raw" class="w-100" onerror="this.src='https://via.placeholder.com/640x480?text=Robot+Cam+OFF'">
-                    <img src="http://192.168.1.32:8080/stream?topic=/robot/camera/color/image_raw&type=mjpeg&width=640&height=480" class="w-100" style="display:none;" onerror="this.src='https://via.placeholder.com/640x480?text=Robot+Cam+OFF'">
+                    <div class="text-white w-100 text-center fw-bold">영상 전송 중단됨 (디버깅 모드)</div>
                 </div>
             </div>
         </div>
@@ -464,19 +472,16 @@
 <script src="js/database_service.js"></script>
 
 <script>
+// ... (기존 downloadPDF 함수 유지) ...
 function downloadPDF() {
     const btn = document.querySelector('button[onclick="downloadPDF()"]');
     const originalText = btn.innerHTML;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> PDF 생성 중... (약 3~5초 소요)';
     btn.disabled = true;
 
-    // 1. 원본 요소 가져오기
     const element = document.getElementById('printable_report');
-
-    // 2. 모달창 무한 로딩 버그를 막기 위해 리포트를 화면 밖으로 완벽히 복제 (Clone)
     const clonedElement = element.cloneNode(true);
     const container = document.createElement('div');
-    // 화면에 보이지 않게 숨김 처리 및 A4 사이즈 고정
     container.style.position = 'absolute';
     container.style.left = '-9999px';
     container.style.top = '0';
@@ -485,7 +490,6 @@ function downloadPDF() {
     container.appendChild(clonedElement);
     document.body.appendChild(container);
 
-    // 3. Chart.js (레이더 차트) 이미지는 일반 복사로 안 넘어오므로 붓으로 직접 덧그리기
     const originalCanvases = element.querySelectorAll('canvas');
     const clonedCanvases = clonedElement.querySelectorAll('canvas');
     originalCanvases.forEach((canvas, index) => {
@@ -493,24 +497,20 @@ function downloadPDF() {
         ctx.drawImage(canvas, 0, 0);
     });
 
-    // 4. PDF 변환 설정
     const dateStr = new Date().toISOString().split('T')[0];
     const opt = {
-        margin: [10, 0, 10, 0], // 상하 여백 10mm
+        margin: [10, 0, 10, 0],
         filename: `SilverHealthClub_Report_${dateStr}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
 
-    // 5. 복제된 깔끔한 화면(container)을 바탕으로 PDF 생성
     html2pdf().set(opt).from(container).save().then(() => {
-        // 다운로드가 끝나면 화면 밖의 복제본을 삭제하고 버튼 원상복구
         document.body.removeChild(container);
         btn.innerHTML = originalText;
         btn.disabled = false;
     }).catch(err => {
-        // 에러 발생 시 처리
         console.error("PDF 생성 에러: ", err);
         document.body.removeChild(container);
         btn.innerHTML = originalText;
