@@ -409,7 +409,7 @@ const UIManager = {
                     <td>80% 이상</td>
                 </tr>
                 <tr>
-                    <td class="text-start"><strong>프레임 추적 손실 (Ignored Frames)</strong><br><small class="text-muted">팔 가림 현상(${warns.arms_not_visible || 0}회) 등으로 분석이 누락된 프레임</small></td>
+                    <td class="text-start"><strong>프레임 추적 손실 (Ignored Frames)</strong><br><small class="text-muted"></td>
                     <td class="fw-bold text-secondary">유효: ${data.analyzed_frame_count || 0}<br>누락: ${data.ignored_frame_count || 0}</td>
                     <td>누락 최소화</td>
                 </tr>
