@@ -185,10 +185,13 @@ class RehabUserInterface(Node):
             live_ref = db.reference('live_current_session')
             live_ref.update({"ai_comment": ai_comment})
             
+            # [변경할 코드]
             raw_start_time = data.get("session_started_at", "default")
+            date_only = raw_start_time.split(" ")[0]
             session_key = raw_start_time.replace("-", "").replace(":", "").replace(" ", "_")
-            # (변경)
-            db_ref = db.reference(f'{session_key}/{exercise}')
+            
+            # 똑같이 3단 구조로 맞춰줍니다.
+            db_ref = db.reference(f'{date_only}/{exercise}/{session_key}')
             db_ref.update({"ai_comment": ai_comment})
 
         except Exception as e:
@@ -203,11 +206,13 @@ class RehabUserInterface(Node):
             report_scores = self.calculate_report_scores(data)
             data["report_scores"] = report_scores
             
+            # [변경할 코드]
             raw_start_time = data.get("session_started_at", "default")
+            date_only = raw_start_time.split(" ")[0] # "2026-03-12 17:05:00"에서 날짜만 추출
             session_key = raw_start_time.replace("-", "").replace(":", "").replace(" ", "_")
             
-            # (변경) 세션키 / 운동종류
-            db_path = f'{session_key}/{exercise_type}'
+            # 3단 구조: 날짜 / 운동종류 / 세션고유키
+            db_path = f'{date_only}/{exercise_type}/{session_key}'
             db_ref = db.reference(db_path)
             db_ref.set(data)
             
