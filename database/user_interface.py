@@ -11,11 +11,14 @@ import firebase_admin
 from firebase_admin import credentials, db
 from openai import OpenAI
 from dotenv import load_dotenv
+from ament_index_python.packages import get_package_share_directory # 추가
 
-load_dotenv()
+package_path = get_package_share_directory("rehab_assist_robot")
 
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-FIREBASE_KEY_PATH = os.path.join(CURRENT_DIR, "serviceAccountKey.json")
+env_path = os.path.join(package_path, "resource", ".env")
+load_dotenv(dotenv_path=env_path)
+
+FIREBASE_KEY_PATH = os.path.join(package_path, "resource", "serviceAccountKey.json")
 FIREBASE_DB_URL = "https://rehab-aa1ee-default-rtdb.asia-southeast1.firebasedatabase.app/"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
@@ -61,30 +64,37 @@ class RehabUserInterface(Node):
         self.get_logger().info("📡 '/exercise_result' 및 '/system_command' 토픽 구독 시작...")
 
     # 🌟 [신규] 시스템 명령어 처리 콜백 함수
+ # 🌟 [수정됨] 시스템 명령어 처리 콜백 함수
+    # 🌟 [수정본] 시스템 명령어 처리 콜백 함수
     def system_command_callback(self, msg):
         command = msg.data.strip()
         self.get_logger().info(f"시스템 명령어 수신: {command}")
         
+        # 🌟 Firebase 실시간 상태 업데이트를 위한 레퍼런스 추가
+        live_ref = db.reference('live_current_session')
+        
         if command == 'START_EXERCISE':
-            # 새 운동 시작 시 플래그 및 데이터 초기화
+            # 내부 변수 초기화
             self.is_analysis_completed = False
             self.last_session_data = None
             self.last_report_scores = None
-            self.get_logger().info("▶️ 새 운동 세션 시작. 분석 플래그 초기화 완료.")
+            
+            # 🌟 [핵심 추가] Firebase에 상태를 써줘야 UI 뱃지가 변합니다!
+            live_ref.update({"system_status": "START_EXERCISE"})
+            self.get_logger().info("▶️ Firebase 상태 업데이트 완료: START_EXERCISE")
             
         elif command == 'END_EXERCISE':
-            # 종료 명령 수신 시 가장 최근에 저장해둔 데이터를 바탕으로 AI 분석 시작
+            # 🌟 [핵심 추가] 운동 종료 상태도 알려줍니다.
+            live_ref.update({"system_status": "END_EXERCISE"})
+            
             if not self.is_analysis_completed and self.last_session_data:
                 self.get_logger().info("🏁 END_EXERCISE 명령 감지! 최종 AI 리포트 생성을 시작합니다...")
                 self.is_analysis_completed = True
                 
-                # 메인 통신이 막히지 않도록 쓰레드로 AI 요청 분리
                 threading.Thread(
                     target=self.request_openai_analysis, 
                     args=(self.last_session_data, self.last_report_scores)
                 ).start()
-            elif not self.last_session_data:
-                self.get_logger().warn("⚠️ END_EXERCISE가 수신되었으나, 분석할 실시간 운동 데이터가 아직 없습니다.")
                 
         elif command == 'REPORT_EXERCISE':
             self.get_logger().info("📊 리포트 출력 명령 수신.")
@@ -182,9 +192,13 @@ class RehabUserInterface(Node):
             live_ref = db.reference('live_current_session')
             live_ref.update({"ai_comment": ai_comment})
             
+            # [변경할 코드]
             raw_start_time = data.get("session_started_at", "default")
+            date_only = raw_start_time.split(" ")[0]
             session_key = raw_start_time.replace("-", "").replace(":", "").replace(" ", "_")
-            db_ref = db.reference(f'{exercise}_sessions/{session_key}')
+            
+            # 똑같이 3단 구조로 맞춰줍니다.
+            db_ref = db.reference(f'{date_only}/{exercise}/{session_key}')
             db_ref.update({"ai_comment": ai_comment})
 
         except Exception as e:
@@ -199,10 +213,13 @@ class RehabUserInterface(Node):
             report_scores = self.calculate_report_scores(data)
             data["report_scores"] = report_scores
             
+            # [변경할 코드]
             raw_start_time = data.get("session_started_at", "default")
+            date_only = raw_start_time.split(" ")[0] # "2026-03-12 17:05:00"에서 날짜만 추출
             session_key = raw_start_time.replace("-", "").replace(":", "").replace(" ", "_")
             
-            db_path = f'{exercise_type}_sessions/{session_key}'
+            # 3단 구조: 날짜 / 운동종류 / 세션고유키
+            db_path = f'{date_only}/{exercise_type}/{session_key}'
             db_ref = db.reference(db_path)
             db_ref.set(data)
             
