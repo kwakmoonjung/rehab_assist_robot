@@ -40,6 +40,8 @@ setup(
             'voice_assistant = voice_processing.voice_assistant:main',
             'system_controller = rehab_assist_robot.system_controller:main',
             'user_interface = database.user_interface:main',
+            'exercise_planner = voice_processing.exercise_planner:main',
+            'face_recognition = object_detection.face_recognition:main',  
         ],
     },
 )

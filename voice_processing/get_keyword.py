@@ -138,8 +138,8 @@ class GetKeyword(Node):
         # STT --> Keword Extract --> Embedding
         output_message = self.stt.speech2text()
         keyword = self.extract_keyword(output_message)
-
-        self.get_logger().warn(f"Detected tools: {keyword}")
+        self.get_logger().info(f'인식한 음성: {keyword}')
+        # self.get_logger().warn(f"Detected tools: {keyword}")
 
         # 응답 객체 설정
         response.success = True
