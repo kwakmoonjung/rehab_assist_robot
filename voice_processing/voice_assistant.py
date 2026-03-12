@@ -5,16 +5,12 @@ import tempfile
 import threading
 import time
 
-import cv2
-import numpy as np
 import pyaudio
 import rclpy
 import scipy.io.wavfile as wav
 import sounddevice as sd
-from cv_bridge import CvBridge
 from openai import OpenAI
 from rclpy.node import Node
-from sensor_msgs.msg import Image
 
 from ament_index_python.packages import get_package_share_directory
 from dotenv import load_dotenv
@@ -47,32 +43,29 @@ class VoiceResponseGenerator:
             openai_api_key=api_key
         )
 
-        # 네 기존 exercise_log 분석 흐름 유지
         analysis_prompt = """
-당신은 재활 운동 코치입니다.
-당신은 노인 운동 코치입니다.
+당신은 노인 운동 보조 코치입니다.
 아래 JSON은 운동 플래너가 DB 전체 기록을 읽은 뒤, 가장 마지막 운동한 날짜의 전체 운동 기록을 기준으로 다시 요약한 데이터입니다.
 
 중요:
 - 반드시 last_workout_date 와 last_day_summary 를 우선 기준으로 설명하세요.
-- 가장 최근 운동 1개가 아니라, 가장 마지막 운동한 날짜 하루 전체 운동 성향을 기준으로 말해야 합니다.
-- 예를 들어 마지막 운동 날짜에 어깨 중심 운동 비중이 높았다면, 그날은 어깨 중심으로 운동했다고 설명해야 합니다.
+- all_time_summary 는 보조 참고용입니다.
+- 가장 최근 운동 1개가 아니라, 가장 마지막 운동한 날짜 하루 전체 기록을 기준으로 설명해야 합니다.
 
 반드시 포함:
-1. 가장 마지막 운동한 날짜가 언제였는지
-2. 그날 어떤 운동들을 했는지
-3. 그날 어느 부위를 중심으로 운동했는지
-4. 전체적인 운동량이 어땠는지
-5. 다음 운동 때 보완하면 좋을 점 1개
+1. 가장 마지막 운동한 날짜가 언제인지
+2. 그날 어떤 부위를 중심으로 운동했는지
+3. 그날 어떤 운동 비중이 높았는지
+4. 그날 기록 기준으로 가장 눈에 띄는 자세 문제 1개
+5. 오늘 보완하면 좋은 부위 1개 이상
 
 규칙:
-- 4~6문장
+- 3~4문장
+- 쉬운 한국어
 - 제목 금지
 - 리스트 금지
-- 음성으로 읽기 쉽게 작성
-- 첫 문장 또는 두 번째 문장에서 날짜를 반드시 언급할 것
-- 너무 딱딱하지 않게 자연스럽게 말할 것
-- 데이터가 부족하면 기록이 아직 충분하지 않다고 부드럽게 안내할 것
+- 자연스럽게 말하듯 작성
+- 첫 문장이나 두 번째 문장 안에 날짜와 중심 부위를 꼭 언급할 것
 
 분석 데이터:
 {analysis_json}
@@ -84,7 +77,6 @@ class VoiceResponseGenerator:
         self.analysis_chain = self.analysis_prompt | self.llm
 
         routine_prompt = """
-당신은 재활 운동 코치입니다.
 당신은 노인 운동 코치입니다.
 아래 JSON은 운동 플래너가 DB 전체 기록을 읽은 뒤, 가장 마지막 운동한 날짜의 전체 운동 기록을 기준으로 다시 요약한 데이터입니다.
 
@@ -287,58 +279,22 @@ unknown /
             10
         )
 
+        # 얼굴 인식 결과 구독
+        self.recognized_user_sub = self.create_subscription(
+            String,
+            '/recognized_user',
+            self.recognized_user_callback,
+            10
+        )
+
         self.pending_planner_type = None
 
-        # ==========================================
-        # 기존 상태 유지
-        # ==========================================
-        self.latest_exercise_data = None
-        self.result_sub = self.create_subscription(
-            String,
-            '/exercise_result',
-            self.exercise_result_callback,
-            10
-        )
+        # 현재 인식된 사용자 정보
+        self.current_user_id = None
+        self.current_user_time = 0.0
+        self.user_valid_duration = 5.0  # 최근 5초 안에 인식된 얼굴만 유효
 
-        # ==========================================
-        # 얼굴 인식 추가
-        # ==========================================
-        self.bridge = CvBridge()
-        self.face_detector = cv2.CascadeClassifier(
-            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-        )
-
-        self.face_registry_dir = os.path.join(package_path, "resource")
-        os.makedirs(self.face_registry_dir, exist_ok=True)
-        self.face_registry_path = os.path.join(self.face_registry_dir, "face_registry.json")
-        self.face_registry = self._load_face_registry()
-
-        self.face_lock = threading.Lock()
-        self.current_person_id = "unknown_user"
-        self.current_person_feature = None
-        self.last_face_seen_at = 0.0
-
-        self.image_counter = 0
-        self.face_process_interval = 15
-        self.face_similarity_threshold = 0.88
-        self.face_keep_threshold = 0.82
-
-        self.pending_new_face_feature = None
-        self.pending_new_face_count = 0
-        self.new_user_confirm_count = 2
-
-        self.image_sub = self.create_subscription(
-            Image,
-            '/camera/camera/color/image_raw',
-            self.image_callback,
-            10
-        )
-
-        self.person_pub = self.create_publisher(String, '/current_person_id', 10)
-
-        self.get_logger().info("🎙️ 상시 대기형 음성 비서 노드 시작! (planner 연동 완료)")
-        self.get_logger().info("📷 얼굴 인식 활성화 완료")
-        self.get_logger().info(f"🙂 face_registry 경로: {self.face_registry_path}")
+        self.get_logger().info("🎙️ 상시 대기형 음성 비서 노드 시작! (planner + face id 연동 완료)")
 
         self.listen_thread = threading.Thread(
             target=self.continuous_listening_loop,
@@ -347,199 +303,23 @@ unknown /
         self.listen_thread.start()
 
     # ==========================================
-    # 얼굴 레지스트리
+    # 얼굴 인식 결과 처리
     # ==========================================
-    def _load_face_registry(self):
-        if not os.path.exists(self.face_registry_path):
-            return {"next_id": 1, "users": []}
-
+    def recognized_user_callback(self, msg):
         try:
-            with open(self.face_registry_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-
-            if "next_id" not in data:
-                data["next_id"] = 1
-            if "users" not in data:
-                data["users"] = []
-
-            return data
-
+            data = json.loads(msg.data)
+            self.current_user_id = data.get("user_id")
+            self.current_user_time = data.get("recognized_at", time.time())
+            self.get_logger().info(f"😀 현재 인식 사용자: {self.current_user_id}")
         except Exception as e:
-            self.get_logger().warn(f"face_registry 로드 실패. 새로 생성합니다: {e}")
-            return {"next_id": 1, "users": []}
+            self.get_logger().error(f"recognized_user 파싱 오류: {e}")
 
-    def _save_face_registry(self):
-        try:
-            with open(self.face_registry_path, "w", encoding="utf-8") as f:
-                json.dump(self.face_registry, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            self.get_logger().error(f"face_registry 저장 실패: {e}")
-
-    def _normalize_feature(self, feature):
-        feature = np.array(feature, dtype=np.float32)
-        norm = np.linalg.norm(feature)
-        if norm == 0:
-            return None
-        return (feature / norm).tolist()
-
-    def _cosine_similarity(self, a, b):
-        a = np.array(a, dtype=np.float32)
-        b = np.array(b, dtype=np.float32)
-
-        if a.size == 0 or b.size == 0:
-            return 0.0
-
-        denom = float(np.linalg.norm(a) * np.linalg.norm(b))
-        if denom == 0.0:
-            return 0.0
-
-        return float(np.dot(a, b) / denom)
-
-    def _extract_face_feature(self, frame):
-        if frame is None or frame.size == 0:
-            return None, None
-
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = self.face_detector.detectMultiScale(
-            gray,
-            scaleFactor=1.1,
-            minNeighbors=5,
-            minSize=(80, 80)
-        )
-
-        if len(faces) == 0:
-            return None, None
-
-        x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
-        face_roi = gray[y:y + h, x:x + w]
-
-        if face_roi.size == 0:
-            return None, None
-
-        face_roi = cv2.resize(face_roi, (96, 96))
-        face_roi = cv2.equalizeHist(face_roi)
-
-        small = cv2.resize(face_roi, (24, 24)).astype(np.float32) / 255.0
-        small_feature = small.flatten()
-
-        hist = cv2.calcHist([face_roi], [0], None, [32], [0, 256]).flatten()
-        hist_sum = np.sum(hist)
-        if hist_sum > 0:
-            hist = hist / hist_sum
-
-        feature = np.concatenate([small_feature, hist]).astype(np.float32)
-        feature = self._normalize_feature(feature)
-        if feature is None:
-            return None, None
-
-        return feature, (x, y, w, h)
-
-    def _find_best_user(self, feature):
-        best_user = None
-        best_score = -1.0
-
-        for user in self.face_registry.get("users", []):
-            score = self._cosine_similarity(feature, user.get("feature", []))
-            if score > best_score:
-                best_score = score
-                best_user = user
-
-        return best_user, best_score
-
-    def _update_registered_feature(self, person_id, new_feature, alpha=0.90):
-        for user in self.face_registry.get("users", []):
-            if user.get("person_id") != person_id:
-                continue
-
-            old_feature = np.array(user.get("feature", []), dtype=np.float32)
-            new_feature_np = np.array(new_feature, dtype=np.float32)
-
-            if old_feature.size == 0 or new_feature_np.size == 0:
-                return
-
-            blended = alpha * old_feature + (1.0 - alpha) * new_feature_np
-            blended = self._normalize_feature(blended)
-            if blended is None:
-                return
-
-            user["feature"] = blended
-            user["updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
-            self.current_person_feature = blended
-            self._save_face_registry()
-            return
-
-    def _register_new_user(self, feature):
-        person_id = f"user_{self.face_registry['next_id']:03d}"
-        self.face_registry["next_id"] += 1
-
-        self.face_registry["users"].append({
-            "person_id": person_id,
-            "feature": feature,
-            "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "updated_at": time.strftime("%Y-%m-%d %H:%M:%S")
-        })
-
-        self._save_face_registry()
-        self.get_logger().info(f"🆕 새 사용자 등록: {person_id}")
-        return person_id
-
-    def _reset_pending_new_face(self):
-        self.pending_new_face_feature = None
-        self.pending_new_face_count = 0
-
-    def _identify_person_from_frame(self, frame):
-        feature, face_box = self._extract_face_feature(frame)
-        if feature is None:
-            return None, None, None
-
-        best_user, best_score = self._find_best_user(feature)
-
-        # 1) 등록된 사용자와 충분히 유사하면 기존 사용자
-        if best_user is not None and best_score >= self.face_similarity_threshold:
-            person_id = best_user["person_id"]
-            self._update_registered_feature(person_id, feature)
-            self._reset_pending_new_face()
-            return person_id, feature, face_box
-
-        # 2) 현재 보고 있던 사람과 비슷하면 현재 사람 유지
-        if self.current_person_id != "unknown_user" and self.current_person_feature is not None:
-            current_score = self._cosine_similarity(feature, self.current_person_feature)
-            if current_score >= self.face_keep_threshold:
-                self._update_registered_feature(self.current_person_id, feature)
-                self._reset_pending_new_face()
-                return self.current_person_id, feature, face_box
-
-        # 3) 새 얼굴 후보 버퍼링
-        if self.pending_new_face_feature is None:
-            self.pending_new_face_feature = feature
-            self.pending_new_face_count = 1
-            return None, feature, face_box
-
-        pending_score = self._cosine_similarity(feature, self.pending_new_face_feature)
-        if pending_score >= self.face_keep_threshold:
-            self.pending_new_face_count += 1
-        else:
-            self.pending_new_face_feature = feature
-            self.pending_new_face_count = 1
-            return None, feature, face_box
-
-        # 4) 연속으로 비슷한 새 얼굴이면 신규 등록
-        if self.pending_new_face_count >= self.new_user_confirm_count:
-            person_id = self._register_new_user(feature)
-            self.current_person_feature = feature
-            self._reset_pending_new_face()
-            return person_id, feature, face_box
-
-        return None, feature, face_box
-
-    def _publish_current_person(self, person_id):
-        msg = String()
-        msg.data = person_id
-        self.person_pub.publish(msg)
-
-    def get_current_person_id(self):
-        with self.face_lock:
-            return self.current_person_id
+    def is_user_recognized_recently(self):
+        if not self.current_user_id:
+            return False
+        if (time.time() - self.current_user_time) > self.user_valid_duration:
+            return False
+        return True
 
     # ==========================================
     # planner 응답 처리
@@ -564,53 +344,6 @@ unknown /
 
         except Exception as e:
             self.get_logger().error(f"planner 응답 처리 오류: {e}")
-
-    # ==========================================
-    # 운동 결과 최신화
-    # ==========================================
-    def exercise_result_callback(self, msg):
-        try:
-            data = json.loads(msg.data)
-            with self.face_lock:
-                if not data.get("person_id"):
-                    data["person_id"] = self.current_person_id
-            self.latest_exercise_data = data
-
-        except Exception as e:
-            self.get_logger().error(f"운동 결과 데이터 파싱 오류: {e}")
-
-    # ==========================================
-    # 얼굴 인식 카메라 콜백
-    # ==========================================
-    def image_callback(self, msg):
-        self.image_counter += 1
-        if self.image_counter % self.face_process_interval != 0:
-            return
-
-        try:
-            frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-        except Exception as e:
-            self.get_logger().warn(f"카메라 프레임 변환 실패: {e}")
-            return
-
-        with self.face_lock:
-            person_id, feature, face_box = self._identify_person_from_frame(frame)
-
-            if person_id is None:
-                return
-
-            if person_id != self.current_person_id:
-                self.get_logger().info(f"🙂 현재 사용자 인식: {person_id}")
-
-            self.current_person_id = person_id
-            self.current_person_feature = feature
-            self.last_face_seen_at = time.time()
-
-        self._publish_current_person(person_id)
-
-        if face_box is not None:
-            x, y, w, h = face_box
-            self.get_logger().debug(f"face box=({x}, {y}, {w}, {h})")
 
     # ==========================================
     # 명령 파싱
@@ -665,10 +398,15 @@ unknown /
                 keywords, targets = self.parse_command(output_message)
                 cmd_msg = String()
 
-                current_person_id = self.get_current_person_id()
-                self._publish_current_person(current_person_id)
-
                 if "start_exercise" in keywords:
+                    # 운동 시작 전 최근 얼굴 인식 여부 확인
+                    if not self.is_user_recognized_recently():
+                        self.get_logger().warn("사용자 얼굴이 최근에 인식되지 않았습니다.")
+                        self.reporter.speak(
+                            "먼저 카메라를 바라봐 주세요. 사용자를 확인한 뒤 운동을 시작할게요."
+                        )
+                        continue
+
                     exercise_name_kor = "운동"
 
                     if targets:
@@ -688,34 +426,54 @@ unknown /
                     cmd_msg.data = "START_EXERCISE"
                     self.cmd_pub.publish(cmd_msg)
                     self.get_logger().info("✅ [상태 변경 전달] START_EXERCISE")
-                    self.get_logger().info(f"🙂 현재 사용자: {current_person_id}")
 
                     self.reporter.speak(
-                        f"네, {exercise_name_kor}을 시작합니다. 자세를 잡아주세요."
+                        f"{self.current_user_id}님 확인되었습니다. 네, {exercise_name_kor}을 시작합니다. 자세를 잡아주세요."
                     )
 
                 elif "posture_correction" in keywords:
+                    # 자세 교정도 사용자 확인 후 진행하게 구성
+                    if not self.is_user_recognized_recently():
+                        self.get_logger().warn("자세 교정 전 사용자 얼굴 인식 필요")
+                        self.reporter.speak(
+                            "먼저 카메라를 바라봐 주세요. 사용자를 확인한 뒤 자세 교정을 시작할게요."
+                        )
+                        continue
+
                     cmd_msg.data = "CORRECTION"
                     self.cmd_pub.publish(cmd_msg)
                     self.get_logger().info("✅ [명령 전달] CORRECTION")
-                    self.get_logger().info(f"🙂 현재 사용자: {current_person_id}")
 
                     self.reporter.speak(
-                        "네, 로봇을 이동시켜 자세를 교정하겠습니다. 가만히 계셔주세요."
+                        f"{self.current_user_id}님 확인되었습니다. 네, 로봇을 이동시켜 자세를 교정하겠습니다. 가만히 계셔주세요."
                     )
 
                 elif "exercise_log" in keywords:
+                    # 기록 조회도 누구 기록인지 알아야 하므로 얼굴 확인 권장
+                    if not self.is_user_recognized_recently():
+                        self.get_logger().warn("운동 기록 조회 전 사용자 얼굴 인식 필요")
+                        self.reporter.speak(
+                            "먼저 카메라를 바라봐 주세요. 사용자를 확인한 뒤 운동 기록을 안내할게요."
+                        )
+                        continue
+
                     cmd_msg.data = "REPORT_EXERCISE"
                     self.cmd_pub.publish(cmd_msg)
                     self.get_logger().info("✅ [명령 전달] REPORT_EXERCISE")
-                    self.get_logger().info(f"🙂 현재 사용자: {current_person_id}")
                     self.request_planner("exercise_log")
 
                 elif "today_routine" in keywords:
+                    # 루틴 추천도 사용자 기준으로 진행
+                    if not self.is_user_recognized_recently():
+                        self.get_logger().warn("루틴 추천 전 사용자 얼굴 인식 필요")
+                        self.reporter.speak(
+                            "먼저 카메라를 바라봐 주세요. 사용자를 확인한 뒤 오늘 루틴을 추천할게요."
+                        )
+                        continue
+
                     cmd_msg.data = "TODAY_ROUTINE"
                     self.cmd_pub.publish(cmd_msg)
                     self.get_logger().info("✅ [명령 전달] TODAY_ROUTINE")
-                    self.get_logger().info(f"🙂 현재 사용자: {current_person_id}")
                     self.request_planner("today_routine")
 
                 else:
