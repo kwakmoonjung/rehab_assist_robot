@@ -19,6 +19,7 @@ setup(
         # ROS 2 기본 설정 파일
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        (os.path.join('share', package_name, 'resource'), glob('resource/*')),
         
         # resource 폴더 내 일반 파일들과 숨김 파일(.env) 병합해서 한 번에 복사 (glob 문법 수정)
         (os.path.join('share', package_name, 'resource'), glob('resource/*') + ['resource/.env']),
