@@ -34,12 +34,8 @@ setup(
     license='TODO: License declaration',
     entry_points={
         'console_scripts': [
-            # 🌟 누락되었던 exercise_logger_node 추가
-            'exercise_logger_node = database.exercise_logger_node:main',
-            'posture_corrector_all = robot_control.posture_corrector_all:main',
-            'posture_corrector_lr = robot_control.posture_corrector_lr:main',
-            'pose_analyzer_all = object_detection.pose_analyzer_all:main',
-            'pose_analyzer_lr = object_detection.pose_analyzer_lr:main',
+            'posture_corrector = robot_control.posture_corrector:main',
+            'pose_analyzer = object_detection.pose_analyzer:main',
             'voice_assistant = voice_processing.voice_assistant:main',
             'system_controller = rehab_assist_robot.system_controller:main',
             'user_interface = database.user_interface:main',

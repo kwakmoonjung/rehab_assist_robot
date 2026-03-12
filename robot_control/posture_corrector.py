@@ -7,9 +7,9 @@ from scipy.spatial.transform import Rotation
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Point 
+from std_msgs.msg import String
 from ament_index_python.packages import get_package_share_directory
 
-# 두산 로봇 및 온로봇 그리퍼 라이브러리 임포트
 import DR_init
 from robot_control.onrobot import RG 
 
@@ -20,52 +20,397 @@ VELOCITY, ACC = 100, 100
 GRIPPER_NAME = "rg2"
 TOOLCHARGER_IP = "192.168.1.1"
 TOOLCHARGER_PORT = "502"
-
-# --- 위치 튜닝 상수 ---
-DEPTH_OFFSET = 40.0
-Y_OFFSET = 0.0       
 MIN_DEPTH = 50.0
-LIFT_OFFSET = 400.0  # 들어올릴 Z축 높이 (자세 교정 폭)
 
-# 두산 로봇 초기화 환경 변수 설정
+g_is_supporting = False
+
+# ==========================================================
+# 1. 두산 API 전역(Global) 세팅 
+# ==========================================================
 DR_init.__dsr__id = ROBOT_ID
 DR_init.__dsr__model = ROBOT_MODEL
 
+rclpy.init()
+dsr_node = rclpy.create_node("dsr_robot_core_node", namespace=ROBOT_ID)
+DR_init.__dsr__node = dsr_node
+
+try:
+    # [추가] 원호 보간 이동을 위한 movec 함수 import
+    from DSR_ROBOT2 import movej, movel, movec, get_current_posj, get_current_posx, mwait
+    from DSR_ROBOT2 import task_compliance_ctrl, release_compliance_ctrl
+except ImportError as e:
+    print(f"Error importing DSR_ROBOT2: {e}")
+    sys.exit()
+
+gripper = RG(GRIPPER_NAME, TOOLCHARGER_IP, TOOLCHARGER_PORT)
+
+
+# ==========================================================
+# 2. 운동별 로봇 보조 전략 (Strategy Pattern) 
+# ==========================================================
+class ExerciseStrategy:
+    # [추가] 어깨 좌표 매개변수 추가
+    def execute_assist(self, td_coord, td_coord_shoulder=None):
+        pass
+
+class LateralRaiseStrategy(ExerciseStrategy):
+    def __init__(self):
+        self.X_OFFSET = -50.0           
+        # [수정] 직관적인 오프셋 분리
+        self.Y_APPROACH_OFFSET = 0.0 # -50.0   # 1차 접근 시 Y 오프셋
+        self.Y_SUPPORT_OFFSET = -100.0   # 1차 접근 위치에서 몸쪽으로 더 들어가는 Y 오프셋
+        self.Z_APPROACH_OFFSET = -100.0 
+        self.TARGET_ANGLE_DEG = 80.0
+
+    def execute_assist(self, td_coord, td_coord_shoulder=None):
+        print("[사레레] 전완근 타겟 동적 보조 시작 (원호 궤적)")
+
+        current_posx = get_current_posx()[0] 
+        base_target_pos = list(td_coord[:3]) + list(current_posx[3:])
+
+        # [수정] 1. 1차 접근 위치 계산
+        approach_pos = list(base_target_pos)
+        approach_pos[0] += self.X_OFFSET
+        approach_pos[1] += self.Y_APPROACH_OFFSET
+        approach_pos[2] = max(approach_pos[2] + self.Z_APPROACH_OFFSET, MIN_DEPTH)
+
+        # [수정] 2. 최종 지지 위치 계산
+        support_pos = list(approach_pos)
+        support_pos[1] += self.Y_SUPPORT_OFFSET
+
+        print(f"1차 접근 위치로 이동: X={approach_pos[0]:.1f}, Y={approach_pos[1]:.1f}, Z={approach_pos[2]:.1f}")
+        movel(approach_pos, vel=VELOCITY, acc=ACC)
+        mwait()
+
+        print(f"최종 지지 위치로 밀착: X={support_pos[0]:.1f}, Y={support_pos[1]:.1f}, Z={support_pos[2]:.1f}")
+        movel(support_pos, vel=VELOCITY, acc=ACC)
+        mwait()
+
+        if td_coord_shoulder is None:
+            print("어깨 좌표가 없습니다. 교정을 중단합니다.")
+            return
+
+        S = np.array(td_coord_shoulder[:3])
+        E_true = np.array(td_coord[:3]) 
+        V_arm = E_true - S 
+
+        # 로봇 지지점 벡터 연산 (기준점: support_pos)
+        E_start = np.array(support_pos[:3])
+        V_robot = E_start - S 
+        
+        Z_up = np.array([0.0, 0.0, 1.0])
+        axis = np.cross(V_arm, Z_up)
+        axis_norm = np.linalg.norm(axis)
+        
+        if axis_norm < 1e-6:
+            axis = np.array([1.0, 0.0, 0.0])
+        else:
+            axis = axis / axis_norm
+
+        theta = np.radians(self.TARGET_ANGLE_DEG)
+        
+        R_mid = Rotation.from_rotvec(axis * (theta / 2.0))
+        V_robot_mid = R_mid.apply(V_robot)
+        pos1 = list(S + V_robot_mid) + list(current_posx[3:])
+
+        R_end = Rotation.from_rotvec(axis * theta)
+        V_robot_end = R_end.apply(V_robot)
+        pos2 = list(S + V_robot_end) + list(current_posx[3:])
+
+        ############ 검증 #############
+        angle_mid_check = np.degrees(np.arccos(np.clip(np.dot(V_robot, V_robot_mid) / (np.linalg.norm(V_robot) * np.linalg.norm(V_robot_mid)), -1.0, 1.0)))
+        angle_end_check = np.degrees(np.arccos(np.clip(np.dot(V_robot, V_robot_end) / (np.linalg.norm(V_robot) * np.linalg.norm(V_robot_end)), -1.0, 1.0)))
+        
+        print(f"[검증 로그] 시작점 -> 경유점 회전 각도: {angle_mid_check:.1f}도 (목표: {self.TARGET_ANGLE_DEG/2:.1f}도)")
+        print(f"[검증 로그] 시작점 -> 목표점 회전 각도: {angle_end_check:.1f}도 (목표: {self.TARGET_ANGLE_DEG:.1f}도)")
+        print(f"[좌표 확인] 시작 Z: {E_start[2]:.1f} -> 경유 Z: {pos1[2]:.1f} -> 목표 Z: {pos2[2]:.1f}")
+        ###############################
+
+        # task_compliance_ctrl(stx=[3000, 3000, 1500, 100, 100, 100], time=0.5)
+
+        print(f"위로 사레레 원호 밀어 올리기 (목표 Z={pos2[2]:.1f})")
+        movec(pos1, pos2, vel=VELOCITY, acc=ACC)
+        mwait()
+
+        ############ 물리적 검증 #############
+        actual_end_pos = get_current_posx()[0]
+        E_actual = np.array(actual_end_pos[:3])
+        V_actual = E_actual - S
+        
+        start_radius = np.linalg.norm(V_robot)
+        actual_radius = np.linalg.norm(V_actual)
+        
+        if start_radius > 0 and actual_radius > 0:
+            actual_angle = np.degrees(np.arccos(np.clip(np.dot(V_robot, V_actual) / (start_radius * actual_radius), -1.0, 1.0)))
+        else:
+            actual_angle = 0.0
+        
+        print(f"[물리적 궤적 검증] 시작 반지름(어깨-로봇종단 거리): {start_radius:.1f}mm")
+        print(f"[물리적 궤적 검증] 종료 반지름(어깨-로봇종단 거리): {actual_radius:.1f}mm")
+        print(f"[물리적 궤적 검증] 실제 회전 각도: {actual_angle:.1f}도")
+        ###############################
+
+class ShoulderPressStrategy(ExerciseStrategy):
+    def __init__(self):
+        self.X_OFFSET = 0.0             
+        self.Y_SUPPORT_OFFSET = -100.0    
+        self.Z_APPROACH_OFFSET = -50.0 
+        self.TARGET_ANGLE_DEG = 100.0
+
+    def execute_assist(self, td_coord, td_coord_shoulder=None):
+        print("[숄더프레스] 팔꿈치 하단 동적 보조 시작 (원호 궤적)")
+
+        current_posx = get_current_posx()[0] 
+        target_pos = list(td_coord[:3]) + list(current_posx[3:])
+
+        target_pos[0] += self.X_OFFSET
+
+        # 1. 팔꿈치 밑으로 10cm 아래 접근
+        approach_pos = list(target_pos)
+        approach_pos[2] = max(approach_pos[2] + self.Z_APPROACH_OFFSET, MIN_DEPTH)
+
+        print(f"팔꿈치 하단 위치로 접근: X={approach_pos[0]:.1f}, Y={approach_pos[1]:.1f}, Z={approach_pos[2]:.1f}")
+        movel(approach_pos, vel=VELOCITY, acc=ACC)
+        mwait()
+
+        support_pos = list(approach_pos)
+        support_pos[1] += self.Y_SUPPORT_OFFSET
+
+        print(f"최종 지지 위치로 밀착: X={support_pos[0]:.1f}, Y={support_pos[1]:.1f}, Z={support_pos[2]:.1f}")
+        movel(support_pos, vel=VELOCITY, acc=ACC)
+        mwait()
+
+        # 2. 어깨 기준 원호 궤적(pos1, pos2) 연산
+        if td_coord_shoulder is None:
+            print("어깨 좌표가 없습니다. 교정을 중단합니다.")
+            return
+
+        S = np.array(td_coord_shoulder[:3])
+        E_true = np.array(td_coord[:3]) 
+        V_arm = E_true - S 
+
+        E_start = np.array(support_pos[:3])
+        V_robot = E_start - S 
+        
+        Z_up = np.array([0.0, 0.0, 1.0])
+        axis = np.cross(V_arm, Z_up)
+        axis_norm = np.linalg.norm(axis)
+        
+        if axis_norm < 1e-6:
+            axis = np.array([1.0, 0.0, 0.0])
+        else:
+            axis = axis / axis_norm
+
+        theta = np.radians(self.TARGET_ANGLE_DEG)
+        
+        R_mid = Rotation.from_rotvec(axis * (theta / 2.0))
+        V_robot_mid = R_mid.apply(V_robot)
+        pos1 = list(S + V_robot_mid) + list(current_posx[3:])
+
+        R_end = Rotation.from_rotvec(axis * theta)
+        V_robot_end = R_end.apply(V_robot)
+        pos2 = list(S + V_robot_end) + list(current_posx[3:])
+
+        ############ 검증 #############
+        # [수정] V, V_mid, V_end 를 V_robot, V_robot_mid, V_robot_end 로 변경
+        angle_mid_check = np.degrees(np.arccos(np.clip(np.dot(V_robot, V_robot_mid) / (np.linalg.norm(V_robot) * np.linalg.norm(V_robot_mid)), -1.0, 1.0)))
+        angle_end_check = np.degrees(np.arccos(np.clip(np.dot(V_robot, V_robot_end) / (np.linalg.norm(V_robot) * np.linalg.norm(V_robot_end)), -1.0, 1.0)))
+        
+        print(f"[검증 로그] 시작점 -> 경유점 회전 각도: {angle_mid_check:.1f}도 (목표: {self.TARGET_ANGLE_DEG/2:.1f}도)")
+        print(f"[검증 로그] 시작점 -> 목표점 회전 각도: {angle_end_check:.1f}도 (목표: {self.TARGET_ANGLE_DEG:.1f}도)")
+        print(f"[좌표 확인] 시작 Z: {E_start[2]:.1f} -> 경유 Z: {pos1[2]:.1f} -> 목표 Z: {pos2[2]:.1f}")
+        ###############################
+
+        print(f"위로 원호 밀어 올리기 (목표 Z={pos2[2]:.1f})")
+        movec(pos1, pos2, vel=VELOCITY, acc=ACC)
+        mwait()
+
+        ############ 검증 #############
+        actual_end_pos = get_current_posx()[0]
+        E_actual = np.array(actual_end_pos[:3])
+        V_actual = E_actual - S
+        
+        # [수정] V 를 V_robot 으로 변경
+        start_radius = np.linalg.norm(V_robot)
+        actual_radius = np.linalg.norm(V_actual)
+        
+        # [수정] V 를 V_robot 으로 변경
+        if start_radius > 0 and actual_radius > 0:
+            actual_angle = np.degrees(np.arccos(np.clip(np.dot(V_robot, V_actual) / (start_radius * actual_radius), -1.0, 1.0)))
+        else:
+            actual_angle = 0.0
+        
+        print(f"[물리적 궤적 검증] 시작 반지름(어깨-지지점 거리): {start_radius:.1f}mm")
+        print(f"[물리적 궤적 검증] 종료 반지름(어깨-로봇종단 거리): {actual_radius:.1f}mm")
+        print(f"[물리적 궤적 검증] 실제 회전 각도: {actual_angle:.1f}도")
+        ###############################
+
+class BicepCurlStrategy(ExerciseStrategy):
+    def __init__(self):
+        self.X_OFFSET = 30.0
+        self.Z_APPROACH_OFFSET = 10.0  
+        self.Y_APPROACH_OFFSET = -50.0   
+        self.Y_SUPPORT_OFFSET = -50.0    
+
+    # [추가] 어깨 좌표 매개변수 추가
+    def execute_assist(self, td_coord, td_coord_shoulder=None):
+        global g_is_supporting
+
+        print("[이두컬] 정적 지지 시작")
+
+        current_posx = get_current_posx()[0] 
+        base_pos = list(td_coord[:3]) + list(current_posx[3:])
+
+        approach_pos = list(base_pos)
+        approach_pos[0] += self.X_OFFSET
+        approach_pos[1] += self.Y_APPROACH_OFFSET
+        approach_pos[2] = max(approach_pos[2] + self.Z_APPROACH_OFFSET, MIN_DEPTH)
+
+        print(f"1차 접근 위치로 이동: X={approach_pos[0]:.1f}, Y={approach_pos[1]:.1f}, Z={approach_pos[2]:.1f}")
+        movel(approach_pos, vel=VELOCITY, acc=ACC)
+        mwait()
+
+        support_pos = list(approach_pos)
+        support_pos[1] += self.Y_SUPPORT_OFFSET
+        
+        print(f"최종 지지 위치로 밀착: X={support_pos[0]:.1f}, Y={support_pos[1]:.1f}, Z={support_pos[2]:.1f}")
+        movel(support_pos, vel=VELOCITY, acc=ACC)
+        mwait()
+
+        task_compliance_ctrl(stx=[10000, 3000, 1000, 100, 100, 100], time=0.5)
+
+        g_is_supporting = True
+        print("[이두컬] 지지 위치 도달. 종료 신호 대기 중...")
+
+
+# ==========================================================
+# 3. 메인 자세 교정 노드
+# ==========================================================
 class PostureCorrector(Node):
     def __init__(self):
         super().__init__("posture_corrector_node")
         
-        # 1. 두산 로봇 DRL API 초기화 연결
-        try:
-            # global 선언을 통해 로봇 제어 함수들을 노드 내에서 직접 사용 가능하게 함
-            global movej, movel, get_current_posj, get_current_posx, mwait
-            from DSR_ROBOT2 import movej, movel, get_current_posj, get_current_posx, mwait
-        except ImportError as e:
-            self.get_logger().error(f"DSR_ROBOT2 라이브러리를 불러오지 못했습니다: {e}")
-            sys.exit()
-
-        # 2. 그리퍼 초기화
-        self.gripper = RG(GRIPPER_NAME, TOOLCHARGER_IP, TOOLCHARGER_PORT)
-
-        # 3. 로봇 초기 자세 세팅
+        self.is_moving = False 
+        
         self.init_robot()
 
-        # 4. 비전 노드에서 계산한 3D 교정 목표점 구독 (토픽 이름 수정됨)
+        self.strategies = {
+            'bicep_curl': BicepCurlStrategy(),
+            'shoulder_press': ShoulderPressStrategy(),
+            'lateral_raise': LateralRaiseStrategy()
+        }
+        self.current_exercise = 'shoulder_press'
+
+        self.mode_sub = self.create_subscription(
+            String, '/set_exercise_mode', self.mode_callback, 10
+        )
+
+        # [수정] 팔꿈치 좌표 저장 변수 추가
+        self.latest_elbow_cam_pos = None
         self.correction_sub = self.create_subscription(
-            Point, 
-            '/target_correction_3d', 
-            self.correction_target_callback, 
-            10
+            Point, '/right_elbow_3d', self.correction_target_callback, 10
         )
         
-        # 패키지 경로 (카메라-그리퍼 캘리브레이션 행렬 로드용)
+        self.latest_shoulder_cam_pos = None
+        self.shoulder_sub = self.create_subscription(
+            Point, '/right_shoulder_3d', self.shoulder_target_callback, 10
+        )
+
+        self.sys_cmd_sub = self.create_subscription(
+            String, '/system_command', self.sys_cmd_callback, 10
+        )
+
         self.package_path = get_package_share_directory("rehab_assist_robot") 
-        self.is_moving = False # 중복 이동 방지 플래그
+        self.get_logger().info(f"노드 시작! 현재 로봇 모드: [{self.current_exercise}]")
+
+    # [수정] 좌표만 저장하고 실행 검사 함수 호출
+    def shoulder_target_callback(self, msg):
+        if msg.z > 0:
+            self.latest_shoulder_cam_pos = [msg.x, msg.y, msg.z]
+            self.try_execute_assist()
+
+    # [수정] 좌표만 저장하고 실행 검사 함수 호출
+    def correction_target_callback(self, msg):
+        if msg.z > 0:
+            self.latest_elbow_cam_pos = [msg.x, msg.y, msg.z]
+            self.try_execute_assist()
+
+    # [추가] 두 좌표가 모두 수신되었는지 확인 후 이동 로직 실행
+    def try_execute_assist(self):
+        global g_is_supporting
+        if self.is_moving or g_is_supporting:
+            return
+
+        # 1. 팔꿈치 좌표는 모든 운동에서 필수
+        if self.latest_elbow_cam_pos is None:
+            return
+
+        # 2. 사레레와 숄더프레스는 어깨 좌표도 필수이므로 없으면 대기
+        if self.current_exercise in ['lateral_raise', 'shoulder_press']:
+            if self.latest_shoulder_cam_pos is None:
+                return
+
+        self.is_moving = True
+        try:
+            gripper2cam_path = os.path.join(self.package_path, "resource", "T_gripper2camera_diff_braket.npy")
+            robot_posx = get_current_posx()[0]
+            
+            td_coord_elbow = self.transform_to_base(self.latest_elbow_cam_pos, gripper2cam_path, robot_posx)
+            
+            td_coord_shoulder = None
+            if self.latest_shoulder_cam_pos is not None:
+                td_coord_shoulder = self.transform_to_base(self.latest_shoulder_cam_pos, gripper2cam_path, robot_posx)            
+            
+            strategy = self.strategies.get(self.current_exercise)
+            if strategy:
+                strategy.execute_assist(td_coord_elbow, td_coord_shoulder)
+
+        except Exception as e:
+            self.get_logger().error(f"교정 동작 중 에러: {e}")
+        finally:
+            self.is_moving = False
+            # [추가] 실행 완료 후 다음 교정을 위해 저장된 좌표 초기화
+            self.latest_elbow_cam_pos = None
+            self.latest_shoulder_cam_pos = None
+
+    def sys_cmd_callback(self, msg):
+        global g_is_supporting
         
-        self.get_logger().info("🤖 자세 교정(로봇 제어) 노드 시작! 비전 노드의 목표 좌표를 대기합니다.")
+        if msg.data == "START_EXERCISE":
+            self.get_logger().info("새로운 운동 시작 명령 감지. 카메라 뷰 확보를 위해 로봇을 초기 위치로 복귀시킵니다.")
+            self.move_to_init_pos()
+        elif msg.data == "END_EXERCISE":
+            if g_is_supporting:
+                self.get_logger().info("종료 신호 수신. 정적 지지를 해제합니다.")
+                release_compliance_ctrl()
+                g_is_supporting = False
+
+    def move_to_init_pos(self):
+        if self.is_moving:
+            self.get_logger().warn("로봇이 현재 교정 동작 중입니다. 복귀 명령을 무시하거나 대기합니다.")
+            return
+            
+        self.is_moving = True
+        try:
+            init_pos = [48.07, 29.12, 113.41, 131.73, -117.85, 62.66]
+            self.get_logger().info("초기 위치(카메라 촬영 뷰)로 로봇 이동 시작...")
+            movej(init_pos, vel=VELOCITY, acc=ACC)
+            mwait()
+            self.get_logger().info("초기 위치 도착 완료! 측면 뷰가 성공적으로 확보되었습니다.")
+        except Exception as e:
+            self.get_logger().error(f"초기 위치 이동 중 에러 발생: {e}")
+        finally:
+            self.is_moving = False
+
+    def mode_callback(self, msg):
+        new_mode = msg.data.lower()
+        if new_mode in self.strategies:
+            self.current_exercise = new_mode
+            self.get_logger().info(f"로봇 보조 모드가 [{new_mode}](으)로 변경되었습니다.")
+        else:
+            self.get_logger().warn(f"지원하지 않는 로봇 운동 모드입니다: {new_mode}")
 
     def get_robot_pose_matrix(self, x, y, z, rx, ry, rz):
-        """로봇의 6자유도 위치(XYZ)와 회전(RxRyRz)을 4x4 변환 행렬로 변환"""
         R = Rotation.from_euler("ZYZ", [rx, ry, rz], degrees=True).as_matrix()
         T = np.eye(4)
         T[:3, :3] = R
@@ -73,105 +418,25 @@ class PostureCorrector(Node):
         return T
 
     def transform_to_base(self, camera_coords, gripper2cam_path, robot_pos):
-        """카메라 좌표계의 점을 로봇 베이스 좌표계로 변환"""
         gripper2cam = np.load(gripper2cam_path)
         coord = np.append(np.array(camera_coords), 1) 
 
         x, y, z, rx, ry, rz = robot_pos
         base2gripper = self.get_robot_pose_matrix(x, y, z, rx, ry, rz)
-
-        # Base -> Cam 변환 행렬 생성
         base2cam = base2gripper @ gripper2cam
         
-        # 목표점의 로봇 베이스 기준 좌표 계산
-        td_coord = np.dot(base2cam, coord)
-        return td_coord[:3]
-
-    def correction_target_callback(self, msg):
-        """비전 노드에서 3D 좌표를 받았을 때 실행되는 콜백 함수"""
-        if self.is_moving:
-            self.get_logger().warn("⚠️ 현재 로봇이 교정 동작 중입니다. 새 명령을 무시합니다.")
-            return
-
-        if msg.z <= 0:
-            self.get_logger().warn("⚠️ 유효하지 않은 Depth 값입니다 (0 이하).")
-            return
-
-        self.is_moving = True
-        
-        try:
-            target_cam_pos = [msg.x, msg.y, msg.z]
-            gripper2cam_path = os.path.join(self.package_path, "resource", "T_gripper2camera_diff_braket.npy")
-            
-            # 1. 로봇의 현재 좌표(Task Space)를 읽어와 카메라 기준 좌표를 로봇 베이스 기준으로 변환
-            robot_posx = get_current_posx()[0]
-            td_coord = self.transform_to_base(target_cam_pos, gripper2cam_path, robot_posx)
-            
-            # 오프셋 적용 (위험 방지용 최소 Depth 설정 포함)
-            td_coord[2] += DEPTH_OFFSET 
-            td_coord[2] = max(td_coord[2], MIN_DEPTH) 
-            td_coord[1] += Y_OFFSET     
-
-            # 2. 이동 직전, 제자리에서 6축(마지막 조인트)만 90도 회전
-            self.get_logger().info("🔄 movel 전 6축 90도 회전 시작")
-            current_posj = get_current_posj()
-            rotated_posj = list(current_posj)
-            rotated_posj[5] += 90.0  # 6축 조인트 각도 90도 증가
-            movej(rotated_posj, vel=VELOCITY, acc=ACC)
-            mwait()
-            self.get_logger().info("✅ 6축 회전 완료")
-
-            # 3. 회전이 완료된 후 변경된 툴의 자세(Rx, Ry, Rz)를 다시 읽어옴
-            rotated_posx = get_current_posx()[0] 
-            
-            # 4. 목표 위치(X,Y,Z)에 새로 읽어온 회전 후의 자세(Rx, Ry, Rz)를 결합
-            target_pos = list(td_coord[:3]) + list(rotated_posx[3:])
-
-            self.get_logger().info(f"📍 자세 교정 목표점(Midpoint)으로 로봇 이동: X={target_pos[0]:.1f}, Y={target_pos[1]:.1f}, Z={target_pos[2]:.1f}")
-            movel(target_pos, vel=VELOCITY, acc=ACC)
-            mwait() 
-            self.get_logger().info("✅ 목표 위치(중간점) 도착 완료!")
-
-            # 5. 그리퍼 파지 (환자의 보조 기구나 팔을 잡음)
-            self.get_logger().info("✊ 자세 교정용 파지 (그리퍼 닫기)")
-            self.gripper.close_gripper(force_val=100)
-            time.sleep(4.0)
-            
-            # 6. 견인 동작 (Z축으로 들어올리기)
-            target_pos_up = list(target_pos)
-            target_pos_up[2] += LIFT_OFFSET
-            self.get_logger().info(f"⬆️ Z축으로 {LIFT_OFFSET}mm 들어올려 견인 시작")
-            movel(target_pos_up, vel=VELOCITY, acc=ACC)
-            mwait()
-            self.get_logger().info("✅ 환자 자세 교정(견인) 완료!")
-        
-        except Exception as e:
-            self.get_logger().error(f"❌ 교정 동작 중 에러 발생: {e}")
-        finally:
-            self.is_moving = False
+        return np.dot(base2cam, coord)[:3]
 
     def init_robot(self):
-        """시작 시 로봇을 안전한 기본 위치로 이동 및 그리퍼 개방"""
         JReady = [0, 0, 90, 0, 90, 0]
         movej(JReady, vel=VELOCITY, acc=ACC)
-
-        init_pos = [73.03, 71.08, -33.55, 23.68, -123.47, -74.72]
-        movej(init_pos, vel=VELOCITY, acc=ACC)
-        self.get_logger().info(f'초기 조인트 위치 세팅 완료: {init_pos}')
         
-        self.gripper.open_gripper()
+        self.move_to_init_pos()
+        
+        gripper.close_gripper()
         mwait()
 
-
 def main(args=None):
-    # 두산 로봇 초기화 환경 변수는 main 실행 전에 세팅되어야 함
-    rclpy.init(args=args)
-    
-    # 두산 로봇 노드 생성 후 글로벌 연결
-    dsr_node = rclpy.create_node("dsr_robot_core_node", namespace=ROBOT_ID)
-    DR_init.__dsr__node = dsr_node
-    
-    # 자세 교정기 노드 생성 및 스핀
     node = PostureCorrector()
     rclpy.spin(node) 
     
