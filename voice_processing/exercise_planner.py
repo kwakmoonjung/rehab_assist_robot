@@ -221,7 +221,7 @@ class ExercisePlanner(Node):
     # ==========================================
     # DB 전체 조회
     # ==========================================
-    def get_all_sessions_from_db(self):
+    def get_all_sessions_from_db(self, user_id):
         session_roots = [
             "bicep_curl_sessions",
             "shoulder_press_sessions",
@@ -232,7 +232,8 @@ class ExercisePlanner(Node):
 
         for root in session_roots:
             try:
-                ref = db.reference(root)
+                # [수정] 사용자별 경로로 접근 (구조에 따라 'users/{user_id}/{root}' 등 조정 필요)
+                ref = db.reference(f"users/{user_id}/{root}")
                 data = ref.get()
 
                 if not data or not isinstance(data, dict):
@@ -243,13 +244,30 @@ class ExercisePlanner(Node):
                         all_sessions.append(session_data)
 
             except Exception as e:
-                self.get_logger().warn(f"{root} 조회 실패: {e}")
+                self.get_logger().warn(f"{user_id}의 {root} 조회 실패: {e}")
 
         all_sessions.sort(
             key=lambda x: x.get("session_started_at", ""),
             reverse=True
         )
         return all_sessions
+
+    # [수정] user_id 매개변수 추가
+    def build_analysis_payload(self, user_id):
+        # [수정] ID를 전달하여 특정 사용자의 데이터만 가져옴
+        all_sessions = self.get_all_sessions_from_db(user_id)
+
+        all_time_summary = self.summarize_sessions(all_sessions)
+        last_workout_date, last_day_sessions = self.get_last_workout_day_sessions(all_sessions)
+        last_day_summary = self.summarize_sessions(last_day_sessions)
+
+        return {
+            "basis_mode": "last_workout_day",
+            "last_workout_date": last_workout_date,
+            "last_day_session_count": len(last_day_sessions),
+            "last_day_summary": last_day_summary,
+            "all_time_summary": all_time_summary,
+        }
 
     def get_last_workout_day_sessions(self, sessions):
         dated_sessions = []
@@ -276,10 +294,7 @@ class ExercisePlanner(Node):
         )
 
         return last_day, last_day_sessions
-
-    # ==========================================
-    # 세션 요약
-    # ==========================================
+    
     def summarize_sessions(self, sessions):
         if not sessions:
             return {
@@ -362,24 +377,7 @@ class ExercisePlanner(Node):
             }
         }
 
-    def build_analysis_payload(self):
-        all_sessions = self.get_all_sessions_from_db()
 
-        all_time_summary = self.summarize_sessions(all_sessions)
-        last_workout_date, last_day_sessions = self.get_last_workout_day_sessions(all_sessions)
-        last_day_summary = self.summarize_sessions(last_day_sessions)
-
-        return {
-            "basis_mode": "last_workout_day",
-            "last_workout_date": last_workout_date,
-            "last_day_session_count": len(last_day_sessions),
-            "last_day_summary": last_day_summary,
-            "all_time_summary": all_time_summary,
-        }
-
-    # ==========================================
-    # 응답 발행
-    # ==========================================
     def publish_response(self, request_type, analysis):
         payload = {
             "type": request_type,
@@ -389,17 +387,22 @@ class ExercisePlanner(Node):
         msg.data = json.dumps(payload, ensure_ascii=False)
         self.response_pub.publish(msg)
         self.get_logger().info(f"📤 planner 응답 발행: {payload}")
-
+    
     # ==========================================
     # 요청 처리
     # ==========================================
     def request_callback(self, msg):
-        request_type = msg.data.strip()
-        self.get_logger().info(f"📥 planner 요청 수신: {request_type}")
-
         try:
+            # [수정] 수신된 JSON 문자열 파싱
+            data = json.loads(msg.data)
+            request_type = data.get("type", "").strip()
+            user_id = data.get("user_id", "unknown")
+            
+            self.get_logger().info(f"📥 planner 요청 수신: {request_type} (사용자: {user_id})")
+
             if request_type in ["exercise_log", "today_routine"]:
-                analysis = self.build_analysis_payload()
+                # [수정] 파싱된 user_id를 분석 함수에 전달
+                analysis = self.build_analysis_payload(user_id)
                 self.publish_response(request_type, analysis)
             else:
                 self.publish_response(
@@ -408,11 +411,13 @@ class ExercisePlanner(Node):
                 )
 
         except Exception as e:
+            # [추가] JSON 파싱 에러 발생 시 기존 방식(단순 문자열) 시도 혹은 에러 처리
             self.get_logger().error(f"요청 처리 중 에러: {e}")
             self.publish_response(
-                request_type,
-                {"message": "운동 데이터를 처리하는 중 문제가 발생했습니다."}
+                "error",
+                {"message": "데이터 파싱 또는 조회 중 문제가 발생했습니다."}
             )
+
 
 
 def main(args=None):

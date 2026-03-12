@@ -17,7 +17,7 @@ class FaceRecognitionNode(Node):
         super().__init__("face_recognition_node")
 
         self.bridge = CvBridge()
-        self.camera_topic = "/camera/camera/color/image_raw"
+        self.camera_topic = "/fixed/camera/color/image_raw"
         
         self.db_dir = os.path.expanduser("~/cobot_ws/src/cobot2_ws/rehab_assist_robot/resource")
         self.db_path = os.path.join(self.db_dir, "face_db.pkl")

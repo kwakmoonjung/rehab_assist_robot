@@ -244,14 +244,12 @@ class VoiceAssistant(Node):
         {user_input}
         """
 
-        # ⭐️ 얼굴 인식 관련 상태 변수 추가
         self.current_user_id = None
         self.current_user_time = 0.0
-        self.user_valid_duration = 5.0  # 최근 5초 안에 인식된 얼굴만 유효
+        self.user_valid_duration = 5.0  
         
-        # ⭐️ 인사 앵무새 방지용 변수 (동일인에게 1분에 한 번만 먼저 인사함)
         self.last_greeted_user = None
-        self.session_timeout = 30.0  # 30초 동안 카메라 밖으로 나가면 세션 리셋
+        self.session_timeout = 30.0  
 
 
         self.prompt_template = PromptTemplate(
@@ -292,7 +290,6 @@ class VoiceAssistant(Node):
             10
         )
 
-        # 얼굴 인식 결과 구독
         self.recognized_user_sub = self.create_subscription(
             String,
             '/recognized_user',
@@ -302,12 +299,11 @@ class VoiceAssistant(Node):
 
         self.pending_planner_type = None
 
-        # 현재 인식된 사용자 정보
         self.current_user_id = None
         self.current_user_time = 0.0
-        self.user_valid_duration = 5.0  # 최근 5초 안에 인식된 얼굴만 유효
+        self.user_valid_duration = 5.0  
 
-        self.get_logger().info("🎙️ 상시 대기형 음성 비서 노드 시작! (planner + face id 연동 완료)")
+        self.get_logger().info("상시 대기형 음성 비서 노드 시작! (planner + face id 연동 완료)")
 
         self.listen_thread = threading.Thread(
             target=self.continuous_listening_loop,
@@ -326,14 +322,12 @@ class VoiceAssistant(Node):
             
             current_time = time.time()
 
-            # ⭐️ 사용자가 카메라 밖으로 30초 이상 나갔다가 돌아오면 리셋 (새로운 만남으로 간주)
             if self.current_user_time > 0 and (current_time - self.current_user_time) > self.session_timeout:
                 self.last_greeted_user = None
 
             self.current_user_id = user_id
             self.current_user_time = current_time
 
-            # ⭐️ 새로운 사용자이거나, 자리를 비웠다 돌아온 경우에만 '딱 한 번' 인사!
             if self.last_greeted_user != user_id:
                 self.last_greeted_user = user_id
                 
@@ -341,7 +335,7 @@ class VoiceAssistant(Node):
                     f"안녕하세요 {user_id}님! 운동 루틴 추천해드릴까요? "
                     "아니면 원하시는 운동 시작한다고 말씀해주시면 자세 분석과 교정을 도와드릴게요."
                 )
-                self.get_logger().info(f"👋 [{user_id}] 님 등장! 최초 1회 인사 실행 중...")
+                self.get_logger().info(f"[{user_id}] 님 등장! 최초 1회 인사 실행 중...")
                 
                 import threading
                 threading.Thread(target=self.reporter.speak, args=(greeting_text,), daemon=True).start()
@@ -372,7 +366,7 @@ class VoiceAssistant(Node):
                 return
 
             speech_text = self.reporter.build_speech_text(response_type, analysis)
-            self.get_logger().info(f"📝 planner 기반 음성 문장 생성 완료: {speech_text}")
+            self.get_logger().info(f"planner 기반 음성 문장 생성 완료: {speech_text}")
             self.reporter.speak(speech_text)
 
             self.pending_planner_type = None
@@ -402,10 +396,16 @@ class VoiceAssistant(Node):
     # ==========================================
     def request_planner(self, request_type):
         msg = String()
-        msg.data = request_type
+        # [수정] string 대신 JSON 형태로 user_id를 함께 전송
+        request_data = {
+            "type": request_type,
+            "user_id": self.current_user_id
+        }
+        msg.data = json.dumps(request_data)
+        
         self.pending_planner_type = request_type
         self.planner_request_pub.publish(msg)
-        self.get_logger().info(f"📤 planner 요청 전송: {request_type}")
+        self.get_logger().info(f"planner 요청 전송: {msg.data}")
 
     # ==========================================
     # 상시 음성 루프
@@ -413,29 +413,42 @@ class VoiceAssistant(Node):
     def continuous_listening_loop(self):
         while rclpy.ok():
             try:
-                self.get_logger().info("⏳ 웨이크업 워드 대기 중...")
+                # [추가] 1. 사용자 얼굴 인식될 때까지 대기
+                if not self.is_user_recognized_recently():
+                    time.sleep(0.5)
+                    continue
+
+                # [수정] 3. 웨이크업 워드 대기 코드 원복
+                self.get_logger().info("웨이크업 워드 대기 중...")
                 self.mic_controller.open_stream()
                 self.wakeup_word.set_stream(self.mic_controller.stream)
 
                 while rclpy.ok() and not self.wakeup_word.is_wakeup():
-                    pass
+                    # [추가] 웨이크업 대기 중 사용자가 카메라 밖으로 벗어나면 루프 종료 및 재대기
+                    if not self.is_user_recognized_recently():
+                        break
 
                 self.mic_controller.close_stream()
-                self.get_logger().info("👂 듣고 있습니다. 명령을 말씀해 주세요...")
+                
+                # [추가] 사용자 이탈로 break 된 경우 다시 대기 상태로 복귀
+                if not self.is_user_recognized_recently():
+                    continue
+
+                self.get_logger().info("듣고 있습니다. 명령을 말씀해 주세요...")
 
                 output_message = self.stt.speech2text()
+
+                self.get_logger().info(f"STT 인식 문장: {output_message}")
 
                 if not output_message or not output_message.strip():
                     continue
 
-                self.get_logger().info(f"🗣️ 인식된 문장: {output_message}")
-
+                # 4. 기존 코드 유지 (명령어 파싱 및 대응)
                 keywords, targets = self.parse_command(output_message)
                 cmd_msg = String()
 
                 if "start_exercise" in keywords:
-                    # 운동 시작 전 최근 얼굴 인식 여부 확인
-                    if not self.is_user_recognized_recently():
+                    if not self.current_user_id:
                         self.get_logger().warn("사용자 얼굴이 최근에 인식되지 않았습니다.")
                         self.reporter.speak(
                             "먼저 카메라를 바라봐 주세요. 사용자를 확인한 뒤 운동을 시작할게요."
@@ -449,7 +462,7 @@ class VoiceAssistant(Node):
                         mode_str = targets[0]
                         mode_msg.data = mode_str
                         self.mode_pub.publish(mode_msg)
-                        self.get_logger().info(f"✅ [모드 변경 전달] {mode_str}")
+                        self.get_logger().info(f"[모드 변경 전달] {mode_str}")
 
                         if mode_str == "bicep_curl":
                             exercise_name_kor = "이두 운동"
@@ -460,15 +473,14 @@ class VoiceAssistant(Node):
 
                     cmd_msg.data = "START_EXERCISE"
                     self.cmd_pub.publish(cmd_msg)
-                    self.get_logger().info("✅ [상태 변경 전달] START_EXERCISE")
+                    self.get_logger().info("[상태 변경 전달] START_EXERCISE")
 
                     self.reporter.speak(
                         f"{self.current_user_id}님 확인되었습니다. 네, {exercise_name_kor}을 시작합니다. 자세를 잡아주세요."
                     )
 
                 elif "posture_correction" in keywords:
-                    # 자세 교정도 사용자 확인 후 진행하게 구성
-                    if not self.is_user_recognized_recently():
+                    if not self.current_user_id:
                         self.get_logger().warn("자세 교정 전 사용자 얼굴 인식 필요")
                         self.reporter.speak(
                             "먼저 카메라를 바라봐 주세요. 사용자를 확인한 뒤 자세 교정을 시작할게요."
@@ -477,15 +489,14 @@ class VoiceAssistant(Node):
 
                     cmd_msg.data = "CORRECTION"
                     self.cmd_pub.publish(cmd_msg)
-                    self.get_logger().info("✅ [명령 전달] CORRECTION")
+                    self.get_logger().info("[명령 전달] CORRECTION")
 
                     self.reporter.speak(
                         f"{self.current_user_id}님 확인되었습니다. 네, 로봇을 이동시켜 자세를 교정하겠습니다. 가만히 계셔주세요."
                     )
 
                 elif "exercise_log" in keywords:
-                    # 기록 조회도 누구 기록인지 알아야 하므로 얼굴 확인 권장
-                    if not self.is_user_recognized_recently():
+                    if not self.current_user_id:
                         self.get_logger().warn("운동 기록 조회 전 사용자 얼굴 인식 필요")
                         self.reporter.speak(
                             "먼저 카메라를 바라봐 주세요. 사용자를 확인한 뒤 운동 기록을 안내할게요."
@@ -494,12 +505,11 @@ class VoiceAssistant(Node):
 
                     cmd_msg.data = "REPORT_EXERCISE"
                     self.cmd_pub.publish(cmd_msg)
-                    self.get_logger().info("✅ [명령 전달] REPORT_EXERCISE")
+                    self.get_logger().info("[명령 전달] REPORT_EXERCISE")
                     self.request_planner("exercise_log")
 
                 elif "today_routine" in keywords:
-                    # 루틴 추천도 사용자 기준으로 진행
-                    if not self.is_user_recognized_recently():
+                    if not self.current_user_id:
                         self.get_logger().warn("루틴 추천 전 사용자 얼굴 인식 필요")
                         self.reporter.speak(
                             "먼저 카메라를 바라봐 주세요. 사용자를 확인한 뒤 오늘 루틴을 추천할게요."
@@ -508,21 +518,21 @@ class VoiceAssistant(Node):
 
                     cmd_msg.data = "TODAY_ROUTINE"
                     self.cmd_pub.publish(cmd_msg)
-                    self.get_logger().info("✅ [명령 전달] TODAY_ROUTINE")
+                    self.get_logger().info("[명령 전달] TODAY_ROUTINE")
                     self.request_planner("today_routine")
 
                 else:
-                    self.get_logger().warn("❓ 명령을 이해하지 못했습니다.")
+                    self.get_logger().warn("명령을 이해하지 못했습니다.")
                     self.reporter.speak("잘 못 들었어요. 다시 한 번 말씀해 주세요.")
 
             except Exception as e:
-                self.get_logger().error(f"❌ 음성 처리 중 에러: {e}")
+                self.get_logger().error(f"음성 처리 중 에러: {e}")
 
-            finally:
-                try:
-                    self.mic_controller.close_stream()
-                except Exception:
-                    pass
+            # finally:
+            #     try:
+            #         self.mic_controller.close_stream()
+            #     except Exception:
+            #         pass
 
 
 def main(args=None):
