@@ -268,57 +268,57 @@ const UIManager = {
             
             tableHTML += `
                 <tr>
-                    <td rowspan="4" class="fw-bold bg-light">관절 가동성<br><small class="text-muted fw-normal">Mobility</small></td>
-                    <td class="text-start"><strong>최대 도달 각도 (Max ROM)</strong><br><small class="text-muted"></td>
-                    <td class="fw-bold text-primary">좌: ${Math.round(metrics.max_rom_left || 0)}°<br>우: ${Math.round(metrics.max_rom_right || 0)}°</td>
-                    <td>80° - 90°</td>
+                    <td rowspan="4" class="fw-bold bg-light align-middle" style="border-bottom: 2px solid #858796;">관절 가동성<br><small class="text-muted fw-normal">Mobility</small></td>
+                    <td class="text-start align-middle"><strong>최대 도달 각도</strong><br><small class="text-muted">(Max ROM)</small></td>
+                    <td class="fw-bold text-primary align-middle">좌: ${Math.round(metrics.max_rom_left || 0)}°<br>우: ${Math.round(metrics.max_rom_right || 0)}°</td>
+                    <td class="align-middle">80° - 90°</td>
                 </tr>
                 <tr>
-                    <td class="text-start"><strong>순수 능동 가동범위 (Pure AROM)</strong><br><small class="text-muted"></td>
-                    <td class="fw-bold text-primary">${rAssist.pure_arom || 0}°</td>
-                    <td>${rAssist.target_prom || 0}° (목표)</td>
+                    <td class="text-start align-middle"><strong>순수 능동 가동범위</strong><br><small class="text-muted">(Pure AROM)</small></td>
+                    <td class="fw-bold text-primary align-middle">${rAssist.pure_arom || 0}°</td>
+                    <td class="align-middle">${rAssist.target_prom || 0}° (목표)</td>
                 </tr>
                 <tr>
-                    <td class="text-start"><strong>로봇 개입 각도 (Assist Trigger)</strong><br><small class="text-muted"></td>
-                    <td class="fw-bold text-warning">${rAssist.assist_trigger_angle || 0}°</td>
-                    <td>지연 개입 권장</td>
+                    <td class="text-start align-middle"><strong>로봇 개입 각도</strong><br><small class="text-muted">(Assist Trigger)</small></td>
+                    <td class="fw-bold text-warning align-middle">${rAssist.assist_trigger_angle || 0}°</td>
+                    <td class="align-middle">지연 개입 권장</td>
+                </tr>
+                <tr style="border-bottom: 2px solid #858796;">
+                    <td class="text-start align-middle"><strong>1회 평균 소요 시간</strong><br><small class="text-muted">(Pace)</small></td>
+                    <td class="fw-bold text-secondary align-middle">${metrics.avg_rep_duration_sec || 0}초</td>
+                    <td class="align-middle">3~4초</td>
                 </tr>
                 <tr>
-                    <td class="text-start"><strong>1회 평균 소요 시간 (Pace)</strong><br><small class="text-muted"></td>
-                    <td class="fw-bold text-secondary">${metrics.avg_rep_duration_sec || 0}초</td>
-                    <td>3~4초</td>
+                    <td rowspan="4" class="fw-bold bg-light align-middle" style="border-bottom: 2px solid #858796;">자세 안정성<br><small class="text-muted fw-normal">Stability</small></td>
+                    <td class="text-start align-middle"><strong>Z축 전후 흔들림</strong><br><small class="text-muted">(Z-Drift)</small></td>
+                    <td class="fw-bold text-danger align-middle">${metrics.max_z_depth_drift_mm || 0} mm</td>
+                    <td class="align-middle">50mm 미만</td>
                 </tr>
                 <tr>
-                    <td rowspan="4" class="fw-bold bg-light">자세 안정성<br><small class="text-muted fw-normal">Stability</small></td>
-                    <td class="text-start"><strong>Z축 전후 흔들림 (Z-Drift)</strong><br><small class="text-muted"></td>
-                    <td class="fw-bold text-danger">${metrics.max_z_depth_drift_mm || 0} mm</td>
-                    <td>50mm 미만</td>
+                    <td class="text-start align-middle"><strong>상체 평균 기울기</strong><br><small class="text-muted">(Trunk Angle)</small></td>
+                    <td class="fw-bold text-danger align-middle">${pStats.avg_trunk_angle || 0}°</td>
+                    <td class="align-middle">5° 미만</td>
                 </tr>
                 <tr>
-                    <td class="text-start"><strong>상체 평균 기울기 (Trunk Angle)</strong><br><small class="text-muted"></td>
-                    <td class="fw-bold text-danger">${pStats.avg_trunk_angle || 0}°</td>
-                    <td>5° 미만</td>
+                    <td class="text-start align-middle"><strong>미세 떨림</strong><br><small class="text-muted">(Tremor Count)</small></td>
+                    <td class="fw-bold text-danger align-middle">${metrics.tremor_count || 0}회</td>
+                    <td class="align-middle">최소화</td>
+                </tr>
+                <tr style="border-bottom: 2px solid #858796;">
+                    <td class="text-start align-middle"><strong>자세 경고 지표</strong><br><small class="text-muted">(Warnings)</small></td>
+                    <td class="fw-bold text-danger align-middle">반동: ${warns.lean_back_momentum || 0}회<br>불균형: ${warns.arm_balance_issue || 0}회</td>
+                    <td class="align-middle">5% 미만</td>
                 </tr>
                 <tr>
-                    <td class="text-start"><strong>미세 떨림 (Tremor Count)</strong><br><small class="text-muted"></td>
-                    <td class="fw-bold text-danger">${metrics.tremor_count || 0}회</td>
-                    <td>최소화</td>
+                    <td rowspan="2" class="fw-bold bg-light align-middle" style="border-bottom: 2px solid #858796;">운동 추적률<br><small class="text-muted fw-normal">Tracking</small></td>
+                    <td class="text-start align-middle"><strong>정자세 비율</strong><br><small class="text-muted">(Good Posture Ratio)</small></td>
+                    <td class="fw-bold text-success align-middle">${pStats.good_posture_ratio || 0}%</td>
+                    <td class="align-middle">80% 이상</td>
                 </tr>
-                <tr>
-                    <td class="text-start"><strong>자세 경고 지표 (Warnings)</strong><br><small class="text-muted"></td>
-                    <td class="fw-bold text-danger">반동: ${warns.lean_back_momentum || 0}회<br>불균형: ${warns.arm_balance_issue || 0}회</td>
-                    <td>5% 미만</td>
-                </tr>
-                <tr>
-                    <td rowspan="2" class="fw-bold bg-light">운동 추적률<br><small class="text-muted fw-normal">Tracking</small></td>
-                    <td class="text-start"><strong>정자세 비율 (Good Posture Ratio)</strong><br><small class="text-muted"></td>
-                    <td class="fw-bold text-success">${pStats.good_posture_ratio || 0}%</td>
-                    <td>80% 이상</td>
-                </tr>
-                <tr>
-                    <td class="text-start"><strong>추적 세션 데이터 (Session Data)</strong><br><small class="text-muted"></td>
-                    <td class="fw-bold text-secondary">${data.frame_count || 0} 프레임<br>${data.session_duration_sec || 0}초</td>
-                    <td>-</td>
+                <tr style="border-bottom: 2px solid #858796;">
+                    <td class="text-start align-middle"><strong>추적 세션 데이터</strong><br><small class="text-muted">(Session Data)</small></td>
+                    <td class="fw-bold text-secondary align-middle">${data.frame_count || 0} 프레임<br>${data.session_duration_sec || 0}초</td>
+                    <td class="align-middle">-</td>
                 </tr>
             `;
 
@@ -330,45 +330,37 @@ const UIManager = {
             
             let warns = data.warning_counts || {};
 
-            } else if (exType === 'shoulder_press') {
-            document.getElementById('report_exercise_title').innerText = "3. 세부 지표 및 타겟 부위 분석 (숄더 프레스)";
-            if(anatomyImg) anatomyImg.src = 'images/body_outline_shoulder.png';
-            const dotL = document.getElementById('report_dot_press_left'); if(dotL) dotL.style.display = 'block';
-            const dotR = document.getElementById('report_dot_press_right'); if(dotR) dotR.style.display = 'block';
-            
-            let warns = data.warning_counts || {};
-
             tableHTML += `
                 <tr>
                     <td rowspan="2" class="fw-bold bg-light align-middle" style="border-bottom: 2px solid #858796;">관절 가동성<br><small class="text-muted fw-normal">Mobility</small></td>
-                    <td class="text-start align-middle"><strong>평균 어깨 굽힘 각도 (Shoulder Flexion)</strong></td>
+                    <td class="text-start align-middle"><strong>평균 어깨 굽힘 각도</strong><br><small class="text-muted">(Shoulder Flexion)</small></td>
                     <td class="fw-bold text-primary align-middle">${Math.round(data.avg_shoulder_angle || 0)}°</td>
                     <td class="align-middle">145° 이상</td>
                 </tr>
                 <tr style="border-bottom: 2px solid #858796;">
-                    <td class="text-start align-middle"><strong>평균 팔꿈치 폄 각도 (Elbow Extension)</strong></td>
+                    <td class="text-start align-middle"><strong>평균 팔꿈치 폄 각도</strong><br><small class="text-muted">(Elbow Extension)</small></td>
                     <td class="fw-bold text-primary align-middle">${Math.round(data.avg_elbow_angle || 0)}°</td>
                     <td class="align-middle">160° 이상</td>
                 </tr>
                 <tr>
                     <td rowspan="3" class="fw-bold bg-light align-middle" style="border-bottom: 2px solid #858796;">자세 안정성<br><small class="text-muted fw-normal">Stability</small></td>
-                    <td class="text-start align-middle"><strong>상체 평균 기울기 (Trunk Angle)</strong></td>
+                    <td class="text-start align-middle"><strong>상체 평균 기울기</strong><br><small class="text-muted">(Trunk Angle)</small></td>
                     <td class="fw-bold text-danger align-middle">${data.avg_trunk_angle || 0}°</td>
                     <td class="align-middle">5° 미만</td>
                 </tr>
                 <tr>
-                    <td class="text-start align-middle"><strong>하강 범위 이탈 (ROM Warnings)</strong></td>
+                    <td class="text-start align-middle"><strong>하강 범위 이탈</strong><br><small class="text-muted">(ROM Warnings)</small></td>
                     <td class="fw-bold text-danger align-middle">과도한 내림: ${warns.too_low || 0}회</td>
                     <td class="align-middle">5% 미만</td>
                 </tr>
                 <tr style="border-bottom: 2px solid #858796;">
-                    <td class="text-start align-middle"><strong>보상 작용 및 불균형 (Compensations)</strong></td>
+                    <td class="text-start align-middle"><strong>보상 작용 및 불균형</strong><br><small class="text-muted">(Compensations)</small></td>
                     <td class="fw-bold text-danger align-middle">허리 반동: ${warns.body_not_straight || 0}회<br>양팔 불균형: ${warns.arm_balance_issue || 0}회</td>
                     <td class="align-middle">5% 미만</td>
                 </tr>
                 <tr style="border-bottom: 2px solid #858796;">
                     <td class="fw-bold bg-light align-middle">운동 정확도<br><small class="text-muted fw-normal">Accuracy</small></td>
-                    <td class="text-start align-middle"><strong>정자세 비율 (Good Posture Ratio)</strong></td>
+                    <td class="text-start align-middle"><strong>정자세 비율</strong><br><small class="text-muted">(Good Posture Ratio)</small></td>
                     <td class="fw-bold text-success align-middle">${data.good_posture_ratio || 0}%</td>
                     <td class="align-middle">80% 이상</td>
                 </tr>
@@ -384,37 +376,37 @@ const UIManager = {
 
             tableHTML += `
                 <tr>
-                    <td rowspan="2" class="fw-bold bg-light">관절 가동성<br><small class="text-muted fw-normal">Mobility</small></td>
-                    <td class="text-start"><strong>평균 팔꿈치 수축 각도 (Elbow Flexion)</strong><br><small class="text-muted"></td>
-                    <td class="fw-bold text-primary">${Math.round(data.avg_elbow_angle || 0)}°</td>
-                    <td>50° 이하 수축</td>
+                    <td rowspan="2" class="fw-bold bg-light align-middle" style="border-bottom: 2px solid #858796;">관절 가동성<br><small class="text-muted fw-normal">Mobility</small></td>
+                    <td class="text-start align-middle"><strong>평균 팔꿈치 수축 각도</strong><br><small class="text-muted">(Elbow Flexion)</small></td>
+                    <td class="fw-bold text-primary align-middle">${Math.round(data.avg_elbow_angle || 0)}°</td>
+                    <td class="align-middle">50° 이하 수축</td>
+                </tr>
+                <tr style="border-bottom: 2px solid #858796;">
+                    <td class="text-start align-middle"><strong>평균 위팔 고정 각도</strong><br><small class="text-muted">(Upper Arm Angle)</small></td>
+                    <td class="fw-bold text-primary align-middle">${Math.round(data.avg_upper_arm_angle || 0)}°</td>
+                    <td class="align-middle">10° 미만</td>
                 </tr>
                 <tr>
-                    <td class="text-start"><strong>평균 위팔 고정 각도 (Upper Arm Angle)</strong><br><small class="text-muted"></td>
-                    <td class="fw-bold text-primary">${Math.round(data.avg_upper_arm_angle || 0)}°</td>
-                    <td>10° 미만</td>
+                    <td rowspan="3" class="fw-bold bg-light align-middle" style="border-bottom: 2px solid #858796;">자세 안정성<br><small class="text-muted fw-normal">Stability</small></td>
+                    <td class="text-start align-middle"><strong>상체 평균 기울기</strong><br><small class="text-muted">(Trunk Angle)</small></td>
+                    <td class="fw-bold text-danger align-middle">${data.avg_trunk_angle || 0}°</td>
+                    <td class="align-middle">5° 미만</td>
                 </tr>
                 <tr>
-                    <td rowspan="3" class="fw-bold bg-light">자세 안정성<br><small class="text-muted fw-normal">Stability</small></td>
-                    <td class="text-start"><strong>상체 평균 기울기 (Trunk Angle)</strong><br><small class="text-muted"></td>
-                    <td class="fw-bold text-danger">${data.avg_trunk_angle || 0}°</td>
-                    <td>5° 미만</td>
+                    <td class="text-start align-middle"><strong>고립 이탈 경고</strong><br><small class="text-muted">(Isolation Break)</small></td>
+                    <td class="fw-bold text-danger align-middle">${warns.elbows_not_close_to_body || 0}회</td>
+                    <td class="align-middle">5% 미만</td>
                 </tr>
-                <tr>
-                    <td class="text-start"><strong>고립 이탈 경고 (Isolation Break)</strong><br><small class="text-muted"></td>
-                    <td class="fw-bold text-danger">${warns.elbows_not_close_to_body || 0}회</td>
-                    <td>5% 미만</td>
+                <tr style="border-bottom: 2px solid #858796;">
+                    <td class="text-start align-middle"><strong>보상 작용 및 불균형</strong><br><small class="text-muted">(Compensations)</small></td>
+                    <td class="fw-bold text-danger align-middle">허리 반동: ${warns.body_not_straight || 0}회<br>양팔 불균형: ${warns.arm_balance_issue || 0}회</td>
+                    <td class="align-middle">5% 미만</td>
                 </tr>
-                <tr>
-                    <td class="text-start"><strong>보상 작용 및 불균형 (Compensations)</strong><br><small class="text-muted"></td>
-                    <td class="fw-bold text-danger">허리 반동: ${warns.body_not_straight || 0}회<br>양팔 불균형: ${warns.arm_balance_issue || 0}회</td>
-                    <td>5% 미만</td>
-                </tr>
-                <tr>
-                    <td rowspan="2" class="fw-bold bg-light">운동 추적률<br><small class="text-muted fw-normal">Tracking</small></td>
-                    <td class="text-start"><strong>정자세 비율 (Good Posture Ratio)</strong><br><small class="text-muted"></td>
-                    <td class="fw-bold text-success">${data.good_posture_ratio || 0}%</td>
-                    <td>80% 이상</td>
+                <tr style="border-bottom: 2px solid #858796;">
+                    <td class="fw-bold bg-light align-middle">운동 추적률<br><small class="text-muted fw-normal">Tracking</small></td>
+                    <td class="text-start align-middle"><strong>정자세 비율</strong><br><small class="text-muted">(Good Posture Ratio)</small></td>
+                    <td class="fw-bold text-success align-middle">${data.good_posture_ratio || 0}%</td>
+                    <td class="align-middle">80% 이상</td>
                 </tr>
             `;
         }
