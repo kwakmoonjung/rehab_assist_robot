@@ -299,7 +299,7 @@ class PostureCorrector(Node):
             'shoulder_press': ShoulderPressStrategy(),
             'lateral_raise': LateralRaiseStrategy()
         }
-        self.current_exercise = 'bicep_curl'
+        self.current_exercise = 'shoulder_press'
 
         self.mode_sub = self.create_subscription(
             String, '/set_exercise_mode', self.mode_callback, 10
@@ -341,9 +341,14 @@ class PostureCorrector(Node):
         if self.is_moving or g_is_supporting:
             return
 
-        # 둘 중 하나라도 들어오지 않았다면 대기
-        if self.latest_elbow_cam_pos is None or self.latest_shoulder_cam_pos is None:
+        # 1. 팔꿈치 좌표는 모든 운동에서 필수
+        if self.latest_elbow_cam_pos is None:
             return
+
+        # 2. 사레레와 숄더프레스는 어깨 좌표도 필수이므로 없으면 대기
+        if self.current_exercise in ['lateral_raise', 'shoulder_press']:
+            if self.latest_shoulder_cam_pos is None:
+                return
 
         self.is_moving = True
         try:
@@ -351,7 +356,10 @@ class PostureCorrector(Node):
             robot_posx = get_current_posx()[0]
             
             td_coord_elbow = self.transform_to_base(self.latest_elbow_cam_pos, gripper2cam_path, robot_posx)
-            td_coord_shoulder = self.transform_to_base(self.latest_shoulder_cam_pos, gripper2cam_path, robot_posx)
+            
+            td_coord_shoulder = None
+            if self.latest_shoulder_cam_pos is not None:
+                td_coord_shoulder = self.transform_to_base(self.latest_shoulder_cam_pos, gripper2cam_path, robot_posx)            
             
             strategy = self.strategies.get(self.current_exercise)
             if strategy:
