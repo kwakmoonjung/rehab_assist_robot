@@ -187,7 +187,8 @@ class RehabUserInterface(Node):
             
             raw_start_time = data.get("session_started_at", "default")
             session_key = raw_start_time.replace("-", "").replace(":", "").replace(" ", "_")
-            db_ref = db.reference(f'{exercise}_sessions/{session_key}')
+            # (변경)
+            db_ref = db.reference(f'{session_key}/{exercise}')
             db_ref.update({"ai_comment": ai_comment})
 
         except Exception as e:
@@ -205,7 +206,8 @@ class RehabUserInterface(Node):
             raw_start_time = data.get("session_started_at", "default")
             session_key = raw_start_time.replace("-", "").replace(":", "").replace(" ", "_")
             
-            db_path = f'{exercise_type}_sessions/{session_key}'
+            # (변경) 세션키 / 운동종류
+            db_path = f'{session_key}/{exercise_type}'
             db_ref = db.reference(db_path)
             db_ref.set(data)
             
