@@ -64,6 +64,13 @@ const UIManager = {
             statusEl.innerHTML = '<i class="fas fa-check-circle"></i> 운동 종료 (분석 중)';
             statusEl.className = "badge bg-success p-2 fs-6 me-3";
             this.stopSessionTimer();
+        } else if (status === 'CORRECTION') {
+            statusEl.innerHTML = '<i class="fas fa-wrench"></i> 자세 교정 중';
+            statusEl.className = "badge bg-warning text-dark p-2 fs-6 me-3"; 
+        } else if (status === 'REPORT_EXERCISE') {
+            // 리포트 작성 중 상태 추가
+            statusEl.innerHTML = '<i class="fas fa-file-signature"></i> 리포트 작성 중';
+            statusEl.className = "badge bg-info text-dark p-2 fs-6 me-3";
         }
     },
 
@@ -314,11 +321,6 @@ const UIManager = {
                     <td class="text-start align-middle"><strong>정자세 비율</strong><br><small class="text-muted">(Good Posture Ratio)</small></td>
                     <td class="fw-bold text-success align-middle">${pStats.good_posture_ratio || 0}%</td>
                     <td class="align-middle">80% 이상</td>
-                </tr>
-                <tr style="border-bottom: 2px solid #858796;">
-                    <td class="text-start align-middle"><strong>추적 세션 데이터</strong><br><small class="text-muted">(Session Data)</small></td>
-                    <td class="fw-bold text-secondary align-middle">${data.frame_count || 0} 프레임<br>${data.session_duration_sec || 0}초</td>
-                    <td class="align-middle">-</td>
                 </tr>
             `;
 
