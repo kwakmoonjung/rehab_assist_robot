@@ -303,6 +303,10 @@ class VoiceAssistant(Node):
             10
         )
 
+        self.correction_sub = self.create_subscription(
+            String, '/end_correction', self.correction_callback, 10
+        )
+
         self.pending_planner_type = None
 
         self.current_user_id = None
@@ -316,6 +320,13 @@ class VoiceAssistant(Node):
             daemon=True
         )
         self.listen_thread.start()
+
+
+    def correction_callback(self, msg):
+        text = msg.data.strip()
+        if text:
+            import threading
+            threading.Thread(target=self.reporter.speak, args=(text,), daemon=True).start()
 
     # ==========================================
     # 얼굴 인식 결과 처리

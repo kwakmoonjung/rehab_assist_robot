@@ -324,6 +324,8 @@ class PostureCorrector(Node):
             String, '/system_command', self.sys_cmd_callback, 10
         )
 
+        self.correction_pub = self.create_publisher(String, '/end_correction', 10)
+
         self.package_path = get_package_share_directory("rehab_assist_robot") 
         self.get_logger().info(f"노드 시작! 현재 로봇 모드: [{self.current_exercise}]")
 
@@ -377,7 +379,17 @@ class PostureCorrector(Node):
             self.latest_shoulder_cam_pos = None
 
             if not g_is_supporting:
-                self.move_to_init_pos()
+                msg = String()
+                msg.data = "자세 교정이 완료되었습니다. 원위치로 복귀합니다."
+                self.correction_pub.publish(msg)
+                
+                # [추가] 음성이 완전히 출력될 때까지 대기한 뒤 이동
+                time.sleep(4.0) 
+                self.move_to_init_pos_slowly()
+
+            self.is_moving = False
+            self.latest_elbow_cam_pos = None
+            self.latest_shoulder_cam_pos = None
 
     def sys_cmd_callback(self, msg):
         global g_is_supporting
@@ -414,6 +426,16 @@ class PostureCorrector(Node):
             self.get_logger().error(f"초기 위치 이동 중 에러 발생: {e}")
         finally:
             self.is_moving = False
+    
+    def move_to_init_pos_slowly(self):
+        try:
+            init_pos = [48.07, 29.12, 113.41, 131.73, -117.85, 62.66]
+            self.get_logger().info("카메라 뷰 확보를 위해 천천히 초기 위치로 복귀합니다.")
+            # [추가] 기존 속도(VELOCITY, ACC)의 30% 수준으로 부드럽게 이동
+            movej(init_pos, vel=VELOCITY * 0.3, acc=ACC * 0.3)
+            mwait()
+        except Exception as e:
+            self.get_logger().error(f"저속 초기 위치 이동 중 에러 발생: {e}")
 
     def mode_callback(self, msg):
         new_mode = msg.data.lower()
