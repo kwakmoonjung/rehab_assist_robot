@@ -330,38 +330,45 @@ const UIManager = {
             
             let warns = data.warning_counts || {};
 
+            } else if (exType === 'shoulder_press') {
+            document.getElementById('report_exercise_title').innerText = "3. 세부 지표 및 타겟 부위 분석 (숄더 프레스)";
+            if(anatomyImg) anatomyImg.src = 'images/body_outline_shoulder.png';
+            const dotL = document.getElementById('report_dot_press_left'); if(dotL) dotL.style.display = 'block';
+            const dotR = document.getElementById('report_dot_press_right'); if(dotR) dotR.style.display = 'block';
+            
+            let warns = data.warning_counts || {};
+
             tableHTML += `
                 <tr>
                     <td rowspan="2" class="fw-bold bg-light align-middle" style="border-bottom: 2px solid #858796;">관절 가동성<br><small class="text-muted fw-normal">Mobility</small></td>
-                    <td class="text-start align-middle"><strong>평균 어깨 굽힘 각도 (Shoulder Flexion)</strong><br><small class="text-muted"></td>
+                    <td class="text-start align-middle"><strong>평균 어깨 굽힘 각도 (Shoulder Flexion)</strong></td>
                     <td class="fw-bold text-primary align-middle">${Math.round(data.avg_shoulder_angle || 0)}°</td>
                     <td class="align-middle">145° 이상</td>
                 </tr>
                 <tr style="border-bottom: 2px solid #858796;">
-                    <td class="text-start align-middle"><strong>평균 팔꿈치 폄 각도 (Elbow Extension)</strong><br><small class="text-muted"></td>
+                    <td class="text-start align-middle"><strong>평균 팔꿈치 폄 각도 (Elbow Extension)</strong></td>
                     <td class="fw-bold text-primary align-middle">${Math.round(data.avg_elbow_angle || 0)}°</td>
                     <td class="align-middle">160° 이상</td>
                 </tr>
                 <tr>
                     <td rowspan="3" class="fw-bold bg-light align-middle" style="border-bottom: 2px solid #858796;">자세 안정성<br><small class="text-muted fw-normal">Stability</small></td>
-                    <td class="text-start align-middle"><strong>상체 평균 기울기 (Trunk Angle)</strong><br><small class="text-muted"></td>
+                    <td class="text-start align-middle"><strong>상체 평균 기울기 (Trunk Angle)</strong></td>
                     <td class="fw-bold text-danger align-middle">${data.avg_trunk_angle || 0}°</td>
                     <td class="align-middle">5° 미만</td>
                 </tr>
-                <tr>리 반동: 1회
-양팔 불균형: 2회
-                    <td class="text-start align-middle"><strong>하강 범위 이탈 (ROM Warnings)</strong><br><small class="text-muted"></td>
+                <tr>
+                    <td class="text-start align-middle"><strong>하강 범위 이탈 (ROM Warnings)</strong></td>
                     <td class="fw-bold text-danger align-middle">과도한 내림: ${warns.too_low || 0}회</td>
                     <td class="align-middle">5% 미만</td>
                 </tr>
                 <tr style="border-bottom: 2px solid #858796;">
-                    <td class="text-start align-middle"><strong>보상 작용 및 불균형 (Compensations)</strong><br><small class="text-muted"></td>
-                    <td class="fw-bold text-danger align-middle">양팔 불균형: ${warns.arm_balance_issue || 0}회</td>
+                    <td class="text-start align-middle"><strong>보상 작용 및 불균형 (Compensations)</strong></td>
+                    <td class="fw-bold text-danger align-middle">허리 반동: ${warns.body_not_straight || 0}회<br>양팔 불균형: ${warns.arm_balance_issue || 0}회</td>
                     <td class="align-middle">5% 미만</td>
                 </tr>
                 <tr style="border-bottom: 2px solid #858796;">
                     <td class="fw-bold bg-light align-middle">운동 정확도<br><small class="text-muted fw-normal">Accuracy</small></td>
-                    <td class="text-start align-middle"><strong>정자세 비율 (Good Posture Ratio)</strong><br><small class="text-muted"></td>
+                    <td class="text-start align-middle"><strong>정자세 비율 (Good Posture Ratio)</strong></td>
                     <td class="fw-bold text-success align-middle">${data.good_posture_ratio || 0}%</td>
                     <td class="align-middle">80% 이상</td>
                 </tr>
