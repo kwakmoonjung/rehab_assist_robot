@@ -269,54 +269,54 @@ const UIManager = {
             tableHTML += `
                 <tr>
                     <td rowspan="4" class="fw-bold bg-light">관절 가동성<br><small class="text-muted fw-normal">Mobility</small></td>
-                    <td class="text-start"><strong>최대 도달 각도 (Max ROM)</strong><br><small class="text-muted">로봇 보조 포함 어깨의 최대 외전(겨드랑이) 각도</small></td>
+                    <td class="text-start"><strong>최대 도달 각도 (Max ROM)</strong><br><small class="text-muted"></td>
                     <td class="fw-bold text-primary">좌: ${Math.round(metrics.max_rom_left || 0)}°<br>우: ${Math.round(metrics.max_rom_right || 0)}°</td>
                     <td>80° - 90°</td>
                 </tr>
                 <tr>
-                    <td class="text-start"><strong>순수 능동 가동범위 (Pure AROM)</strong><br><small class="text-muted">어르신 본인의 근력만으로 도달한 최고 각도</small></td>
+                    <td class="text-start"><strong>순수 능동 가동범위 (Pure AROM)</strong><br><small class="text-muted"></td>
                     <td class="fw-bold text-primary">${rAssist.pure_arom || 0}°</td>
                     <td>${rAssist.target_prom || 0}° (목표)</td>
                 </tr>
                 <tr>
-                    <td class="text-start"><strong>로봇 개입 각도 (Assist Trigger)</strong><br><small class="text-muted">힘이 부족해 로봇이 근력 보조를 시작한 시점</small></td>
+                    <td class="text-start"><strong>로봇 개입 각도 (Assist Trigger)</strong><br><small class="text-muted"></td>
                     <td class="fw-bold text-warning">${rAssist.assist_trigger_angle || 0}°</td>
                     <td>지연 개입 권장</td>
                 </tr>
                 <tr>
-                    <td class="text-start"><strong>1회 평균 소요 시간 (Pace)</strong><br><small class="text-muted">동작 1회를 완수하는 데 걸린 평균 시간</small></td>
+                    <td class="text-start"><strong>1회 평균 소요 시간 (Pace)</strong><br><small class="text-muted"></td>
                     <td class="fw-bold text-secondary">${metrics.avg_rep_duration_sec || 0}초</td>
                     <td>3~4초</td>
                 </tr>
                 <tr>
                     <td rowspan="4" class="fw-bold bg-light">자세 안정성<br><small class="text-muted fw-normal">Stability</small></td>
-                    <td class="text-start"><strong>Z축 전후 흔들림 (Z-Drift)</strong><br><small class="text-muted">운동 중 상체가 앞뒤로 흔들린 최대 깊이 변동량</small></td>
+                    <td class="text-start"><strong>Z축 전후 흔들림 (Z-Drift)</strong><br><small class="text-muted"></td>
                     <td class="fw-bold text-danger">${metrics.max_z_depth_drift_mm || 0} mm</td>
                     <td>50mm 미만</td>
                 </tr>
                 <tr>
-                    <td class="text-start"><strong>상체 평균 기울기 (Trunk Angle)</strong><br><small class="text-muted">좌우측으로 몸통이 기울어진 평균 각도</small></td>
+                    <td class="text-start"><strong>상체 평균 기울기 (Trunk Angle)</strong><br><small class="text-muted"></td>
                     <td class="fw-bold text-danger">${pStats.avg_trunk_angle || 0}°</td>
                     <td>5° 미만</td>
                 </tr>
                 <tr>
-                    <td class="text-start"><strong>미세 떨림 (Tremor Count)</strong><br><small class="text-muted">근력 부족으로 인해 관절이 덜덜 떨린 횟수</small></td>
+                    <td class="text-start"><strong>미세 떨림 (Tremor Count)</strong><br><small class="text-muted"></td>
                     <td class="fw-bold text-danger">${metrics.tremor_count || 0}회</td>
                     <td>최소화</td>
                 </tr>
                 <tr>
-                    <td class="text-start"><strong>자세 경고 지표 (Warnings)</strong><br><small class="text-muted">자세 불균형 및 허리 반동 사용 횟수</small></td>
+                    <td class="text-start"><strong>자세 경고 지표 (Warnings)</strong><br><small class="text-muted"></td>
                     <td class="fw-bold text-danger">반동: ${warns.lean_back_momentum || 0}회<br>불균형: ${warns.arm_balance_issue || 0}회</td>
-                    <td>0회</td>
+                    <td>5% 미만</td>
                 </tr>
                 <tr>
                     <td rowspan="2" class="fw-bold bg-light">운동 추적률<br><small class="text-muted fw-normal">Tracking</small></td>
-                    <td class="text-start"><strong>정자세 비율 (Good Posture Ratio)</strong><br><small class="text-muted">전체 운동 중 완벽한 자세를 유지한 시간 비율</small></td>
+                    <td class="text-start"><strong>정자세 비율 (Good Posture Ratio)</strong><br><small class="text-muted"></td>
                     <td class="fw-bold text-success">${pStats.good_posture_ratio || 0}%</td>
                     <td>80% 이상</td>
                 </tr>
                 <tr>
-                    <td class="text-start"><strong>추적 세션 데이터 (Session Data)</strong><br><small class="text-muted">카메라가 분석한 총 프레임 및 세션 진행 시간</small></td>
+                    <td class="text-start"><strong>추적 세션 데이터 (Session Data)</strong><br><small class="text-muted"></td>
                     <td class="fw-bold text-secondary">${data.frame_count || 0} 프레임<br>${data.session_duration_sec || 0}초</td>
                     <td>-</td>
                 </tr>
@@ -332,42 +332,37 @@ const UIManager = {
 
             tableHTML += `
                 <tr>
-                    <td rowspan="2" class="fw-bold bg-light">관절 가동성<br><small class="text-muted fw-normal">Mobility</small></td>
-                    <td class="text-start"><strong>평균 어깨 굽힘 각도 (Shoulder Flexion)</strong><br><small class="text-muted">상완을 위로 들어올렸을 때 어깨가 펴진 각도</small></td>
-                    <td class="fw-bold text-primary">${Math.round(data.avg_shoulder_angle || 0)}°</td>
-                    <td>145° 이상</td>
+                    <td rowspan="2" class="fw-bold bg-light align-middle" style="border-bottom: 2px solid #858796;">관절 가동성<br><small class="text-muted fw-normal">Mobility</small></td>
+                    <td class="text-start align-middle"><strong>평균 어깨 굽힘 각도 (Shoulder Flexion)</strong><br><small class="text-muted"></td>
+                    <td class="fw-bold text-primary align-middle">${Math.round(data.avg_shoulder_angle || 0)}°</td>
+                    <td class="align-middle">145° 이상</td>
+                </tr>
+                <tr style="border-bottom: 2px solid #858796;">
+                    <td class="text-start align-middle"><strong>평균 팔꿈치 폄 각도 (Elbow Extension)</strong><br><small class="text-muted"></td>
+                    <td class="fw-bold text-primary align-middle">${Math.round(data.avg_elbow_angle || 0)}°</td>
+                    <td class="align-middle">160° 이상</td>
                 </tr>
                 <tr>
-                    <td class="text-start"><strong>평균 팔꿈치 폄 각도 (Elbow Extension)</strong><br><small class="text-muted">가장 높이 밀어 올렸을 때 팔꿈치가 완전히 펴진 각도</small></td>
-                    <td class="fw-bold text-primary">${Math.round(data.avg_elbow_angle || 0)}°</td>
-                    <td>160° 이상</td>
+                    <td rowspan="3" class="fw-bold bg-light align-middle" style="border-bottom: 2px solid #858796;">자세 안정성<br><small class="text-muted fw-normal">Stability</small></td>
+                    <td class="text-start align-middle"><strong>상체 평균 기울기 (Trunk Angle)</strong><br><small class="text-muted"></td>
+                    <td class="fw-bold text-danger align-middle">${data.avg_trunk_angle || 0}°</td>
+                    <td class="align-middle">5° 미만</td>
                 </tr>
                 <tr>
-                    <td rowspan="3" class="fw-bold bg-light">자세 안정성<br><small class="text-muted fw-normal">Stability</small></td>
-                    <td class="text-start"><strong>상체 평균 기울기 (Trunk Angle)</strong><br><small class="text-muted">무게를 밀어올릴 때 척추가 버틴 전후좌우 흔들림</small></td>
-                    <td class="fw-bold text-danger">${data.avg_trunk_angle || 0}°</td>
-                    <td>5° 미만</td>
+                    <td class="text-start align-middle"><strong>하강 범위 이탈 (ROM Warnings)</strong><br><small class="text-muted"></td>
+                    <td class="fw-bold text-danger align-middle">과도한 내림: ${warns.too_low || 0}회</td>
+                    <td class="align-middle">5% 미만</td>
                 </tr>
-                <tr>
-                    <td class="text-start"><strong>하강 범위 이탈 (ROM Warnings)</strong><br><small class="text-muted">팔꿈치를 기준선 아래로 과도하게 내리거나 굽힌 횟수</small></td>
-                    <td class="fw-bold text-danger">과도한 내림: ${warns.too_low || 0}회<br>하단 굽힘: ${warns.bend_elbows_at_bottom || 0}회</td>
-                    <td>0회</td>
+                <tr style="border-bottom: 2px solid #858796;">
+                    <td class="text-start align-middle"><strong>보상 작용 및 불균형 (Compensations)</strong><br><small class="text-muted"></td>
+                    <td class="fw-bold text-danger align-middle">양팔 불균형: ${warns.arm_balance_issue || 0}회</td>
+                    <td class="align-middle">5% 미만</td>
                 </tr>
-                <tr>
-                    <td class="text-start"><strong>보상 작용 및 불균형 (Compensations)</strong><br><small class="text-muted">신체 반동 사용 및 양팔의 비대칭적 밀기 현상</small></td>
-                    <td class="fw-bold text-danger">기울어짐: ${warns.body_not_straight || 0}회<br>양팔 불균형: ${warns.arm_balance_issue || 0}회</td>
-                    <td>0회</td>
-                </tr>
-                <tr>
-                    <td rowspan="2" class="fw-bold bg-light">운동 정확도<br><small class="text-muted fw-normal">Accuracy</small></td>
-                    <td class="text-start"><strong>정자세 비율 (Good Posture Ratio)</strong><br><small class="text-muted">전체 모션 중 타겟 근육에 올바른 부하가 걸린 비율</small></td>
-                    <td class="fw-bold text-success">${data.good_posture_ratio || 0}%</td>
-                    <td>80% 이상</td>
-                </tr>
-                <tr>
-                    <td class="text-start"><strong>프레임 추적률 (Tracking)</strong><br><small class="text-muted">전체 모션 중 완벽한 자세로 판정된 프레임 수치</small></td>
-                    <td class="fw-bold text-secondary">정상: ${data.good_frame_count || 0}<br>전체: ${data.frame_count || 0}</td>
-                    <td>-</td>
+                <tr style="border-bottom: 2px solid #858796;">
+                    <td class="fw-bold bg-light align-middle">운동 정확도<br><small class="text-muted fw-normal">Accuracy</small></td>
+                    <td class="text-start align-middle"><strong>정자세 비율 (Good Posture Ratio)</strong><br><small class="text-muted"></td>
+                    <td class="fw-bold text-success align-middle">${data.good_posture_ratio || 0}%</td>
+                    <td class="align-middle">80% 이상</td>
                 </tr>
             `;
 
@@ -382,34 +377,34 @@ const UIManager = {
             tableHTML += `
                 <tr>
                     <td rowspan="2" class="fw-bold bg-light">관절 가동성<br><small class="text-muted fw-normal">Mobility</small></td>
-                    <td class="text-start"><strong>평균 팔꿈치 수축 각도 (Elbow Flexion)</strong><br><small class="text-muted">이두근을 수축하여 전완을 끌어올렸을 때의 내각</small></td>
+                    <td class="text-start"><strong>평균 팔꿈치 수축 각도 (Elbow Flexion)</strong><br><small class="text-muted"></td>
                     <td class="fw-bold text-primary">${Math.round(data.avg_elbow_angle || 0)}°</td>
                     <td>50° 이하 수축</td>
                 </tr>
                 <tr>
-                    <td class="text-start"><strong>평균 위팔 고정 각도 (Upper Arm Angle)</strong><br><small class="text-muted">어깨에서 팔꿈치로 이어지는 상완의 수직 고정력</small></td>
+                    <td class="text-start"><strong>평균 위팔 고정 각도 (Upper Arm Angle)</strong><br><small class="text-muted"></td>
                     <td class="fw-bold text-primary">${Math.round(data.avg_upper_arm_angle || 0)}°</td>
                     <td>10° 미만</td>
                 </tr>
                 <tr>
                     <td rowspan="3" class="fw-bold bg-light">자세 안정성<br><small class="text-muted fw-normal">Stability</small></td>
-                    <td class="text-start"><strong>상체 평균 기울기 (Trunk Angle)</strong><br><small class="text-muted">바벨을 들어올릴 때 몸통의 전후좌우 기울어짐 평균</small></td>
+                    <td class="text-start"><strong>상체 평균 기울기 (Trunk Angle)</strong><br><small class="text-muted"></td>
                     <td class="fw-bold text-danger">${data.avg_trunk_angle || 0}°</td>
                     <td>5° 미만</td>
                 </tr>
                 <tr>
-                    <td class="text-start"><strong>고립 이탈 경고 (Isolation Break)</strong><br><small class="text-muted">팔꿈치가 옆구리에서 떨어지며 근육 고립이 풀린 횟수</small></td>
+                    <td class="text-start"><strong>고립 이탈 경고 (Isolation Break)</strong><br><small class="text-muted"></td>
                     <td class="fw-bold text-danger">${warns.elbows_not_close_to_body || 0}회</td>
-                    <td>0회</td>
+                    <td>5% 미만</td>
                 </tr>
                 <tr>
-                    <td class="text-start"><strong>보상 작용 및 불균형 (Compensations)</strong><br><small class="text-muted">허리 반동 사용 및 양팔의 비대칭적 당기기 현상</small></td>
+                    <td class="text-start"><strong>보상 작용 및 불균형 (Compensations)</strong><br><small class="text-muted"></td>
                     <td class="fw-bold text-danger">허리 반동: ${warns.body_not_straight || 0}회<br>양팔 불균형: ${warns.arm_balance_issue || 0}회</td>
-                    <td>0회</td>
+                    <td>5% 미만</td>
                 </tr>
                 <tr>
                     <td rowspan="2" class="fw-bold bg-light">운동 추적률<br><small class="text-muted fw-normal">Tracking</small></td>
-                    <td class="text-start"><strong>정자세 비율 (Good Posture Ratio)</strong><br><small class="text-muted">전체 운동 중 흔들림 없이 올바른 부하가 걸린 비율</small></td>
+                    <td class="text-start"><strong>정자세 비율 (Good Posture Ratio)</strong><br><small class="text-muted"></td>
                     <td class="fw-bold text-success">${data.good_posture_ratio || 0}%</td>
                     <td>80% 이상</td>
                 </tr>
