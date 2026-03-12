@@ -408,11 +408,6 @@ const UIManager = {
                     <td class="fw-bold text-success">${data.good_posture_ratio || 0}%</td>
                     <td>80% 이상</td>
                 </tr>
-                <tr>
-                    <td class="text-start"><strong>프레임 추적 손실 (Ignored Frames)</strong><br><small class="text-muted"></td>
-                    <td class="fw-bold text-secondary">유효: ${data.analyzed_frame_count || 0}<br>누락: ${data.ignored_frame_count || 0}</td>
-                    <td>누락 최소화</td>
-                </tr>
             `;
         }
 
