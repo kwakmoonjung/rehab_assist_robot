@@ -2,3 +2,4 @@ test/
 resource/*.env
 resource/*.json
 *.pyc
+*.vscode

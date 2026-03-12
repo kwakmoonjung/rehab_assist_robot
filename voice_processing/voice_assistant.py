@@ -44,32 +44,33 @@ class VoiceResponseGenerator:
         )
 
         analysis_prompt = """
-당신은 노인 운동 보조 코치입니다.
-아래 JSON은 운동 플래너가 DB 전체 기록을 읽은 뒤, 가장 마지막 운동한 날짜의 전체 운동 기록을 기준으로 다시 요약한 데이터입니다.
+        당신은 노인 운동 보조 코치입니다.
+        아래 JSON은 운동 플래너가 DB 전체 기록을 읽은 뒤, 가장 마지막 운동한 날짜의 전체 운동 기록을 기준으로 다시 요약한 데이터입니다.
 
-중요:
-- 반드시 last_workout_date 와 last_day_summary 를 우선 기준으로 설명하세요.
-- all_time_summary 는 보조 참고용입니다.
-- 가장 최근 운동 1개가 아니라, 가장 마지막 운동한 날짜 하루 전체 기록을 기준으로 설명해야 합니다.
+        중요:
+        - 반드시 last_workout_date 와 last_day_summary 를 우선 기준으로 설명하세요.
+        - all_time_summary 는 보조 참고용입니다.
+        - 가장 최근 운동 1개가 아니라, 가장 마지막 운동한 날짜 하루 전체 기록을 기준으로 설명해야 합니다.
 
-반드시 포함:
-1. 가장 마지막 운동한 날짜가 언제인지
-2. 그날 어떤 부위를 중심으로 운동했는지
-3. 그날 어떤 운동 비중이 높았는지
-4. 그날 기록 기준으로 가장 눈에 띄는 자세 문제 1개
-5. 오늘 보완하면 좋은 부위 1개 이상
+        반드시 포함:
+        1. 가장 마지막 운동한 날짜가 언제인지
+        2. 그날 어떤 부위를 중심으로 운동했는지
+        3. 그날 어떤 운동 비중이 높았는지
+        4. 그날 기록 기준으로 가장 눈에 띄는 자세 문제 1개
+        5. 오늘 보완하면 좋은 부위 1개 이상
 
-규칙:
-- 3~4문장
-- 쉬운 한국어
-- 제목 금지
-- 리스트 금지
-- 자연스럽게 말하듯 작성
-- 첫 문장이나 두 번째 문장 안에 날짜와 중심 부위를 꼭 언급할 것
+        규칙:
+        - 3~4문장
+        - 쉬운 한국어
+        - 제목 금지
+        - 리스트 금지
+        - 자연스럽게 말하듯 작성
+        - 첫 문장이나 두 번째 문장 안에 날짜와 중심 부위를 꼭 언급할 것
 
-분석 데이터:
-{analysis_json}
-"""
+        분석 데이터:
+        {analysis_json}
+        """
+
         self.analysis_prompt = PromptTemplate(
             input_variables=["analysis_json"],
             template=analysis_prompt,
@@ -77,35 +78,36 @@ class VoiceResponseGenerator:
         self.analysis_chain = self.analysis_prompt | self.llm
 
         routine_prompt = """
-당신은 노인 운동 코치입니다.
-아래 JSON은 운동 플래너가 DB 전체 기록을 읽은 뒤, 가장 마지막 운동한 날짜의 전체 운동 기록을 기준으로 다시 요약한 데이터입니다.
+        당신은 노인 운동 코치입니다.
+        아래 JSON은 운동 플래너가 DB 전체 기록을 읽은 뒤, 가장 마지막 운동한 날짜의 전체 운동 기록을 기준으로 다시 요약한 데이터입니다.
 
-중요:
-- 반드시 last_workout_date 와 last_day_summary 를 우선 기준으로 루틴을 구성하세요.
-- 가장 최근 운동 1개가 아니라, 가장 마지막 운동한 날짜 하루 전체 운동 성향을 기준으로 판단해야 합니다.
-- 예를 들어 마지막 운동 날짜에 어깨 중심 운동 비중이 높았다면, 오늘은 어깨를 또 몰아서 하기보다 가슴, 등, 자세 안정, 하체 보완 쪽으로 루틴을 짜세요.
+        중요:
+        - 반드시 last_workout_date 와 last_day_summary 를 우선 기준으로 루틴을 구성하세요.
+        - 가장 최근 운동 1개가 아니라, 가장 마지막 운동한 날짜 하루 전체 운동 성향을 기준으로 판단해야 합니다.
+        - 예를 들어 마지막 운동 날짜에 어깨 중심 운동 비중이 높았다면, 오늘은 어깨를 또 몰아서 하기보다 가슴, 등, 자세 안정, 하체 보완 쪽으로 루틴을 짜세요.
 
-반드시 포함:
-1. 가장 마지막 운동한 날짜가 언제였는지
-2. 그날 어느 부위를 중심으로 운동했는지
-3. 그래서 오늘은 어느 부위를 중점적으로 보완할 것인지
-4. 오늘 할 운동 3~4개
-5. 각 운동별 횟수와 세트 수
-6. 마지막에 주의사항 1문장
+        반드시 포함:
+        1. 가장 마지막 운동한 날짜가 언제였는지
+        2. 그날 어느 부위를 중심으로 운동했는지
+        3. 그래서 오늘은 어느 부위를 중점적으로 보완할 것인지
+        4. 오늘 할 운동 3~4개
+        5. 각 운동별 횟수와 세트 수
+        6. 마지막에 주의사항 1문장
 
-규칙:
-- 4~6문장
-- 제목 금지
-- 리스트 금지
-- 음성으로 읽기 쉽게 작성
-- 첫 문장 또는 두 번째 문장에서 날짜와 직전 운동 부위를 반드시 언급할 것
-- 너무 어렵거나 위험한 운동은 피할 것
-- 장비 없어도 가능한 운동 위주
-- 상체 중심으로 하되 필요하면 가벼운 하체 1개 정도 포함 가능
+        규칙:
+        - 4~6문장
+        - 제목 금지
+        - 리스트 금지
+        - 음성으로 읽기 쉽게 작성
+        - 첫 문장 또는 두 번째 문장에서 날짜와 직전 운동 부위를 반드시 언급할 것
+        - 너무 어렵거나 위험한 운동은 피할 것
+        - 장비 없어도 가능한 운동 위주
+        - 상체 중심으로 하되 필요하면 가벼운 하체 1개 정도 포함 가능
 
-분석 데이터:
-{analysis_json}
-"""
+        분석 데이터:
+        {analysis_json}
+        """
+
         self.routine_prompt = PromptTemplate(
             input_variables=["analysis_json"],
             template=routine_prompt,
@@ -186,61 +188,72 @@ class VoiceAssistant(Node):
         )
 
         prompt_content = """
-당신은 음성 명령을 분류하고 필요한 키워드를 추출하는 도우미입니다.
+        당신은 음성 명령을 분류하고 필요한 키워드를 추출하는 도우미입니다.
 
-<역할>
-사용자 문장을 아래 5가지 중 하나로 분류하세요.
-1. 운동 기록 조회/분석 요청
-2. 오늘 운동 루틴 추천 요청
-3. 운동 시작 요청
-4. 자세 교정 요청
-5. 그 외
+        <역할>
+        사용자 문장을 아래 5가지 중 하나로 분류하세요.
+        1. 운동 기록 조회/분석 요청
+        2. 오늘 운동 루틴 추천 요청
+        3. 운동 시작 요청
+        4. 자세 교정 요청
+        5. 그 외
 
-<출력 형식>
-반드시 아래 중 하나만 출력하세요.
+        <출력 형식>
+        반드시 아래 중 하나만 출력하세요.
 
-1. 운동 기록 조회/분석:
-exercise_log /
+        1. 운동 기록 조회/분석:
+        exercise_log /
 
-2. 오늘 운동 루틴 추천:
-today_routine /
+        2. 오늘 운동 루틴 추천:
+        today_routine /
 
-3. 운동 시작 요청:
-start_exercise / [운동종목]
+        3. 운동 시작 요청:
+        start_exercise / [운동종목]
 
-4. 자세 교정 요청:
-posture_correction /
+        4. 자세 교정 요청:
+        posture_correction /
 
-5. 해당 없음:
-unknown /
+        5. 해당 없음:
+        unknown /
 
-<운동종목 작성 규칙>
-사용자가 언급한 운동을 아래 3가지 영어 키워드 중 하나로만 변환하세요.
-- 이두 운동, 팔 운동 -> bicep_curl
-- 숄더 프레스, 어깨 프레스 -> shoulder_press
-- 사레레, 사이드 레터럴 레이즈, 측면 어깨 -> lateral_raise
-- 운동 종목이 없으면 / 뒤를 비우세요.
+        <운동종목 작성 규칙>
+        사용자가 언급한 운동을 아래 3가지 영어 키워드 중 하나로만 변환하세요.
+        - 이두 운동, 팔 운동 -> bicep_curl
+        - 숄더 프레스, 어깨 프레스 -> shoulder_press
+        - 사레레, 사이드 레터럴 레이즈, 측면 어깨 -> lateral_raise
+        - 운동 종목이 없으면 / 뒤를 비우세요.
 
-<예시>
-"오늘 운동 기록 알려줘" -> exercise_log /
-"내 운동 데이터 분석해줘" -> exercise_log /
-"오늘 루틴 짜줘" -> today_routine /
-"오늘 운동 루틴 추천해줘" -> today_routine /
-"이두 운동 시작할게" -> start_exercise / bicep_curl
-"사레레 하자" -> start_exercise / lateral_raise
-"운동 시작하자" -> start_exercise /
-"자세 교정해줘" -> posture_correction /
-"로봇 움직여줘" -> posture_correction /
-"안녕" -> unknown /
+        <예시>
+        "오늘 운동 기록 알려줘" -> exercise_log /
+        "내 운동 데이터 분석해줘" -> exercise_log /
+        "오늘 루틴 짜줘" -> today_routine /
+        "오늘 운동 루틴 추천해줘" -> today_routine /
+        "이두 운동 시작할게" -> start_exercise / bicep_curl
+        "사레레 하자" -> start_exercise / lateral_raise
+        "운동 시작하자" -> start_exercise /
+        "자세 교정해줘" -> posture_correction /
+        "로봇 움직여줘" -> posture_correction /
+        "안녕" -> unknown /
 
-<규칙>
-- 설명 절대 금지
-- 반드시 한 줄만 출력
-- 반드시 위 형식만 사용
+        <규칙>
+        - 설명 절대 금지
+        - 반드시 한 줄만 출력
+        - 반드시 위 형식만 사용
 
-<사용자 입력>
-{user_input}
-"""
+        <사용자 입력>
+        {user_input}
+        """
+
+        # ⭐️ 얼굴 인식 관련 상태 변수 추가
+        self.current_user_id = None
+        self.current_user_time = 0.0
+        self.user_valid_duration = 5.0  # 최근 5초 안에 인식된 얼굴만 유효
+        
+        # ⭐️ 인사 앵무새 방지용 변수 (동일인에게 1분에 한 번만 먼저 인사함)
+        self.last_greeted_user = None
+        self.session_timeout = 30.0  # 30초 동안 카메라 밖으로 나가면 세션 리셋
+
+
         self.prompt_template = PromptTemplate(
             input_variables=["user_input"],
             template=prompt_content,
@@ -307,12 +320,34 @@ unknown /
     # ==========================================
     def recognized_user_callback(self, msg):
         try:
-            data = json.loads(msg.data)
-            self.current_user_id = data.get("user_id")
-            self.current_user_time = data.get("recognized_at", time.time())
-            self.get_logger().info(f"😀 현재 인식 사용자: {self.current_user_id}")
+            user_id = msg.data.strip()
+            if not user_id:
+                return
+            
+            current_time = time.time()
+
+            # ⭐️ 사용자가 카메라 밖으로 30초 이상 나갔다가 돌아오면 리셋 (새로운 만남으로 간주)
+            if self.current_user_time > 0 and (current_time - self.current_user_time) > self.session_timeout:
+                self.last_greeted_user = None
+
+            self.current_user_id = user_id
+            self.current_user_time = current_time
+
+            # ⭐️ 새로운 사용자이거나, 자리를 비웠다 돌아온 경우에만 '딱 한 번' 인사!
+            if self.last_greeted_user != user_id:
+                self.last_greeted_user = user_id
+                
+                greeting_text = (
+                    f"안녕하세요 {user_id}님! 운동 루틴 추천해드릴까요? "
+                    "아니면 원하시는 운동 시작한다고 말씀해주시면 자세 분석과 교정을 도와드릴게요."
+                )
+                self.get_logger().info(f"👋 [{user_id}] 님 등장! 최초 1회 인사 실행 중...")
+                
+                import threading
+                threading.Thread(target=self.reporter.speak, args=(greeting_text,), daemon=True).start()
+
         except Exception as e:
-            self.get_logger().error(f"recognized_user 파싱 오류: {e}")
+            self.get_logger().error(f"recognized_user 처리 오류: {e}")
 
     def is_user_recognized_recently(self):
         if not self.current_user_id:
