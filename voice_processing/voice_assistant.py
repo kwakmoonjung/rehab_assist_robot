@@ -4,13 +4,20 @@ import os
 import tempfile
 import threading
 import time
+import warnings # [추가] 파이썬 경고 제어 모듈
+
+# [추가] TensorFlow Lite C++ Info 로그 출력 억제
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 import pyaudio
 import rclpy
 import scipy.io.wavfile as wav
+from scipy.io.wavfile import WavFileWarning # [추가] WavFileWarning 임포트
 import sounddevice as sd
 from openai import OpenAI
 from rclpy.node import Node
+
+warnings.filterwarnings("ignore", category=WavFileWarning)
 
 from ament_index_python.packages import get_package_share_directory
 from dotenv import load_dotenv
@@ -196,10 +203,10 @@ class VoiceAssistant(Node):
         2. 오늘 운동 루틴 추천 요청
         3. 운동 시작 요청
         4. 자세 교정 요청
-        5. 그 외
+        5. 운동 종료 요청
 
         <출력 형식>
-        반드시 아래 중 하나만 출력하세요.
+        반드시 아래 6가지 중 하나만 출력하세요.
 
         1. 운동 기록 조회/분석:
         exercise_log /
@@ -213,8 +220,9 @@ class VoiceAssistant(Node):
         4. 자세 교정 요청:
         posture_correction /
 
-        5. 해당 없음:
-        unknown /
+        5. 운동 종료 요청인 경우: end_exercise /
+
+        6. 위 5가지에 해당하지 않으면: unknown /
 
         <운동종목 작성 규칙>
         사용자가 언급한 운동을 아래 3가지 영어 키워드 중 하나로만 변환하세요.
@@ -232,7 +240,9 @@ class VoiceAssistant(Node):
         "사레레 하자" -> start_exercise / lateral_raise
         "운동 시작하자" -> start_exercise /
         "자세 교정해줘" -> posture_correction /
-        "로봇 움직여줘" -> posture_correction /
+        "교정 시작할게" -> posture_correction /
+        "운동 끝났어" -> end_exercise /       
+        "운동 그만할래" -> end_exercise /     
         "안녕" -> unknown /
 
         <규칙>
@@ -244,12 +254,8 @@ class VoiceAssistant(Node):
         {user_input}
         """
 
-        self.current_user_id = None
-        self.current_user_time = 0.0
-        self.user_valid_duration = 5.0  
-        
+        self.current_user_id = None        
         self.last_greeted_user = None
-        self.session_timeout = 30.0  
 
 
         self.prompt_template = PromptTemplate(
@@ -303,7 +309,7 @@ class VoiceAssistant(Node):
         self.current_user_time = 0.0
         self.user_valid_duration = 5.0  
 
-        self.get_logger().info("상시 대기형 음성 비서 노드 시작! (planner + face id 연동 완료)")
+        self.get_logger().info("음성 비서 노드 시작! 사용자 얼굴이 인식되기까지 대기합니다.")
 
         self.listen_thread = threading.Thread(
             target=self.continuous_listening_loop,
@@ -320,15 +326,9 @@ class VoiceAssistant(Node):
             if not user_id:
                 return
             
-            current_time = time.time()
-
-            if self.current_user_time > 0 and (current_time - self.current_user_time) > self.session_timeout:
-                self.last_greeted_user = None
-
-            self.current_user_id = user_id
-            self.current_user_time = current_time
-
-            if self.last_greeted_user != user_id:
+            # [수정] 시간 체크 로직 삭제, 아이디가 변경되었을 때만 갱신 및 인사
+            if self.current_user_id != user_id:
+                self.current_user_id = user_id
                 self.last_greeted_user = user_id
                 
                 greeting_text = (
@@ -343,12 +343,9 @@ class VoiceAssistant(Node):
         except Exception as e:
             self.get_logger().error(f"recognized_user 처리 오류: {e}")
 
-    def is_user_recognized_recently(self):
-        if not self.current_user_id:
-            return False
-        if (time.time() - self.current_user_time) > self.user_valid_duration:
-            return False
-        return True
+    # [수정] 시간 만료 체크 함수 삭제 및 단순 ID 존재 여부 반환 함수로 변경
+    def is_user_recognized(self):
+        return self.current_user_id is not None
 
     # ==========================================
     # planner 응답 처리
@@ -413,27 +410,21 @@ class VoiceAssistant(Node):
     def continuous_listening_loop(self):
         while rclpy.ok():
             try:
-                # [추가] 1. 사용자 얼굴 인식될 때까지 대기
-                if not self.is_user_recognized_recently():
+                # [수정] 1. 등록된 사용자가 없을 때만 대기
+                if not self.is_user_recognized():
                     time.sleep(0.5)
                     continue
 
-                # [수정] 3. 웨이크업 워드 대기 코드 원복
                 self.get_logger().info("웨이크업 워드 대기 중...")
                 self.mic_controller.open_stream()
                 self.wakeup_word.set_stream(self.mic_controller.stream)
 
+                # [수정] 2. 웨이크업 대기 중 얼굴 인식 끊김(break) 로직 완전 제거
                 while rclpy.ok() and not self.wakeup_word.is_wakeup():
-                    # [추가] 웨이크업 대기 중 사용자가 카메라 밖으로 벗어나면 루프 종료 및 재대기
-                    if not self.is_user_recognized_recently():
-                        break
+                    pass
 
                 self.mic_controller.close_stream()
                 
-                # [추가] 사용자 이탈로 break 된 경우 다시 대기 상태로 복귀
-                if not self.is_user_recognized_recently():
-                    continue
-
                 self.get_logger().info("듣고 있습니다. 명령을 말씀해 주세요...")
 
                 output_message = self.stt.speech2text()
@@ -487,13 +478,15 @@ class VoiceAssistant(Node):
                         )
                         continue
 
+                    self.reporter.speak(
+                        f"{self.current_user_id}님 확인되었습니다. 네, 로봇을 이동시켜 자세를 교정하겠습니다. 가만히 계셔주세요."
+                    )
+
                     cmd_msg.data = "CORRECTION"
                     self.cmd_pub.publish(cmd_msg)
                     self.get_logger().info("[명령 전달] CORRECTION")
 
-                    self.reporter.speak(
-                        f"{self.current_user_id}님 확인되었습니다. 네, 로봇을 이동시켜 자세를 교정하겠습니다. 가만히 계셔주세요."
-                    )
+                    
 
                 elif "exercise_log" in keywords:
                     if not self.current_user_id:
@@ -520,6 +513,12 @@ class VoiceAssistant(Node):
                     self.cmd_pub.publish(cmd_msg)
                     self.get_logger().info("[명령 전달] TODAY_ROUTINE")
                     self.request_planner("today_routine")
+                
+                elif "end_exercise" in keywords:
+                    cmd_msg.data = "END_EXERCISE"
+                    self.cmd_pub.publish(cmd_msg)
+                    self.get_logger().info("[명령 전달] END_EXERCISE")
+                    self.reporter.speak("운동을 종료합니다. 수고하셨습니다.")
 
                 else:
                     self.get_logger().warn("명령을 이해하지 못했습니다.")

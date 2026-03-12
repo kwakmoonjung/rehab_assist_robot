@@ -36,6 +36,9 @@ class SystemController(Node):
             
         elif command == "REPORT_EXERCISE": # [수정] 상태 변경 로직 제거, 단순 로깅 확인용
             self.get_logger().info("'운동 기록 조회' 명령 확인 -> 상태 유지")
+        
+        elif command == "TODAY_ROUTINE":
+            self.get_logger().info("'오늘 루틴 추천' 명령 확인 -> 상태 유지")
             
         elif command == "CORRECTION":
             self.get_logger().info("'자세 교정' 명령 확인 -> 비전 노드에 3D 좌표 발행 요청")

@@ -294,6 +294,10 @@ class PostureCorrector(Node):
         
         self.init_robot()
 
+        self.package_path = get_package_share_directory("rehab_assist_robot") 
+        self.gripper2cam_path = os.path.join(self.package_path, "resource", "T_gripper2camera_diff_braket.npy")
+        self.gripper2cam = np.load(self.gripper2cam_path)
+
         self.strategies = {
             'bicep_curl': BicepCurlStrategy(),
             'shoulder_press': ShoulderPressStrategy(),
@@ -352,14 +356,13 @@ class PostureCorrector(Node):
 
         self.is_moving = True
         try:
-            gripper2cam_path = os.path.join(self.package_path, "resource", "T_gripper2camera_diff_braket.npy")
             robot_posx = get_current_posx()[0]
             
-            td_coord_elbow = self.transform_to_base(self.latest_elbow_cam_pos, gripper2cam_path, robot_posx)
+            td_coord_elbow = self.transform_to_base(self.latest_elbow_cam_pos, robot_posx)
             
             td_coord_shoulder = None
             if self.latest_shoulder_cam_pos is not None:
-                td_coord_shoulder = self.transform_to_base(self.latest_shoulder_cam_pos, gripper2cam_path, robot_posx)            
+                td_coord_shoulder = self.transform_to_base(self.latest_shoulder_cam_pos, robot_posx)            
             
             strategy = self.strategies.get(self.current_exercise)
             if strategy:
@@ -373,17 +376,27 @@ class PostureCorrector(Node):
             self.latest_elbow_cam_pos = None
             self.latest_shoulder_cam_pos = None
 
+            if not g_is_supporting:
+                self.move_to_init_pos()
+
     def sys_cmd_callback(self, msg):
         global g_is_supporting
         
         if msg.data == "START_EXERCISE":
             self.get_logger().info("새로운 운동 시작 명령 감지. 카메라 뷰 확보를 위해 로봇을 초기 위치로 복귀시킵니다.")
+            # [추가] 로봇 복귀 전 무조건 컴플라이언스 모드를 해제하여 충돌 에러 방지
+            if g_is_supporting:
+                release_compliance_ctrl()
+                g_is_supporting = False
             self.move_to_init_pos()
+
         elif msg.data == "END_EXERCISE":
             if g_is_supporting:
                 self.get_logger().info("종료 신호 수신. 정적 지지를 해제합니다.")
                 release_compliance_ctrl()
                 g_is_supporting = False
+                # [추가] 지지 해제 후 안전하게 홈 위치 복귀
+                self.move_to_init_pos()
 
     def move_to_init_pos(self):
         if self.is_moving:
@@ -417,14 +430,11 @@ class PostureCorrector(Node):
         T[:3, 3] = [x, y, z]
         return T
 
-    def transform_to_base(self, camera_coords, gripper2cam_path, robot_pos):
-        gripper2cam = np.load(gripper2cam_path)
+    def transform_to_base(self, camera_coords, robot_pos):
         coord = np.append(np.array(camera_coords), 1) 
-
         x, y, z, rx, ry, rz = robot_pos
         base2gripper = self.get_robot_pose_matrix(x, y, z, rx, ry, rz)
-        base2cam = base2gripper @ gripper2cam
-        
+        base2cam = base2gripper @ self.gripper2cam
         return np.dot(base2cam, coord)[:3]
 
     def init_robot(self):
