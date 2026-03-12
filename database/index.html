@@ -64,7 +64,7 @@
                             </select>
                         </div>
 
-                        <div class="border-start ps-4">
+                        <div class="border-start ps-4" style="display: none;">
                             <span class="text-muted fw-bold d-block" style="font-size: 0.9rem;">로봇 시스템 상태</span>
                             <span id="robot_system_status" class="badge bg-secondary p-2 mt-1 fs-5 shadow-sm">
                                 <i class="fas fa-power-off"></i> 시스템 대기 중
@@ -197,7 +197,7 @@
                                     <p class="small text-muted mb-2">안전하게 도달할 수 있는 최대 관절 각도를 의미합니다. 이 점수가 높을수록 일상생활의 활동 반경이 넓어집니다.</p>
                                     <div class="calc-box border-primary border-start border-3 mt-auto">
                                         <strong class="text-primary"><i class="fas fa-calculator"></i> 계산 방식 (50점 배점)</strong><br>
-                                        운동별 핵심 관절의 실제 도달 각도를 목표 기준치(예: 사레레 80°, 숄더프레스 145°)와 비교하여 비율에 따라 점수를 환산합니다.
+                                        운동별 핵심 관절의 실제 도달 각도를 목표 기준치(예: 사레레 80°, 숄더프레스 145°)와 비교하여 비율에 따라 점 환산합니다.
                                     </div>
                                 </div>
                             </div>
@@ -240,7 +240,9 @@
                         </div>
                     </div>
 
-                    <div class="mb-4">
+                    <div class="html2pdf__page-break"></div>
+
+                    <div class="mb-4" style="padding-top: 10px;">
                         <h5 class="fw-bold text-dark border-start border-4 border-primary ps-2 mb-3" id="report_exercise_title">3. 세부 지표 및 타겟 부위 분석</h5>
                         <div class="row g-3">
                             <div class="col-md-8">
@@ -250,7 +252,7 @@
                                             <th width="20%">평가 항목</th>
                                             <th width="40%">세부 지표</th>
                                             <th width="20%">측정 결과</th>
-                                            <th width="20%">목표 / 참고치</th>
+                                            <th width="20%">참고치</th>
                                         </tr>
                                     </thead>
                                     <tbody id="report_table_body">
@@ -410,7 +412,7 @@
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script src="js/firebase_config.js"></script>
+<script src="js/firebase_config.js"></script>b4
 <script src="js/ui_manager.js"></script>
 <script src="js/database_service.js"></script>
 
@@ -421,40 +423,28 @@ function downloadPDF() {
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> PDF 생성 중... (약 3~5초 소요)';
     btn.disabled = true;
 
+    // 복제(Clone)하지 않고 원본 요소를 그대로 가져옵니다.
     const element = document.getElementById('printable_report');
-    const clonedElement = element.cloneNode(true);
-    const container = document.createElement('div');
-    container.style.position = 'absolute';
-    container.style.left = '-9999px';
-    container.style.top = '0';
-    container.style.width = '210mm'; 
-    container.style.background = 'white';
-    container.appendChild(clonedElement);
-    document.body.appendChild(container);
-
-    const originalCanvases = element.querySelectorAll('canvas');
-    const clonedCanvases = clonedElement.querySelectorAll('canvas');
-    originalCanvases.forEach((canvas, index) => {
-        const ctx = clonedCanvases[index].getContext('2d');
-        ctx.drawImage(canvas, 0, 0);
-    });
-
+    
     const dateStr = new Date().toISOString().split('T')[0];
     const opt = {
         margin: [10, 0, 10, 0],
         filename: `SilverHealthClub_Report_${dateStr}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
+        html2canvas: { 
+            scale: 2, 
+            useCORS: true,
+            backgroundColor: '#ffffff' // 배경색을 명시적으로 흰색으로 지정
+        },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
 
-    html2pdf().set(opt).from(container).save().then(() => {
-        document.body.removeChild(container);
+    // 요소를 직접 지정하여 바로 PDF로 변환합니다.
+    html2pdf().set(opt).from(element).save().then(() => {
         btn.innerHTML = originalText;
         btn.disabled = false;
     }).catch(err => {
         console.error("PDF 생성 에러: ", err);
-        document.body.removeChild(container);
         btn.innerHTML = originalText;
         btn.disabled = false;
         alert("PDF 생성 중 문제가 발생했습니다. 키보드 F12를 눌러 콘솔 창을 확인해주세요.");
