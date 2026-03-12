@@ -42,6 +42,7 @@ setup(
             'voice_assistant = voice_processing.voice_assistant:main',
             'system_controller = rehab_assist_robot.system_controller:main',
             'user_interface = database.user_interface:main',
+            'face_id = voice_processing.face_id:main',
         ],
     },
 )
