@@ -5,7 +5,7 @@ let sessionTimerInterval = null;
 let sessionSeconds = 0;
 
 document.addEventListener("DOMContentLoaded", function() {
-    document.getElementById('btn_toggle_admin').addEventListener('click', function() {
+    document.getElementById('btn_toggle_admin')?.addEventListener('click', function() {
         const panel = document.getElementById('admin_panel');
         if (panel.style.display === 'none') {
             panel.style.display = 'block';
@@ -39,13 +39,15 @@ const UIManager = {
     startSessionTimer: function() {
         if(sessionTimerInterval) clearInterval(sessionTimerInterval);
         sessionSeconds = 0;
-        document.getElementById('session-timer-display').style.display = 'inline-block';
+        const timerDisplay = document.getElementById('session-timer-display');
+        if(timerDisplay) timerDisplay.style.display = 'inline-block';
         
         sessionTimerInterval = setInterval(() => {
             sessionSeconds++;
             const mins = String(Math.floor(sessionSeconds / 60)).padStart(2, '0');
             const secs = String(sessionSeconds % 60).padStart(2, '0');
-            document.getElementById('session-time').innerText = `${mins}:${secs}`;
+            const timeEl = document.getElementById('session-time');
+            if(timeEl) timeEl.innerText = `${mins}:${secs}`;
         }, 1000);
     },
 
@@ -56,6 +58,8 @@ const UIManager = {
 
     updateSessionStatus: function(status) {
         const statusEl = document.getElementById('connection-status');
+        if (!statusEl) return;
+
         if (status === 'START_EXERCISE') {
             statusEl.innerHTML = '<i class="fas fa-play-circle"></i> 운동 진행 중';
             statusEl.className = "badge bg-primary p-2 fs-6 me-3";
@@ -68,7 +72,6 @@ const UIManager = {
             statusEl.innerHTML = '<i class="fas fa-wrench"></i> 자세 교정 중';
             statusEl.className = "badge bg-warning text-dark p-2 fs-6 me-3"; 
         } else if (status === 'REPORT_EXERCISE') {
-            // 리포트 작성 중 상태 추가
             statusEl.innerHTML = '<i class="fas fa-file-signature"></i> 리포트 작성 중';
             statusEl.className = "badge bg-info text-dark p-2 fs-6 me-3";
         }
@@ -79,16 +82,34 @@ const UIManager = {
         this.previousRepCount = 0; 
         this.hideAllDots(); 
         this.stopSessionTimer();
-        if(document.getElementById('session-timer-display')) {
-            document.getElementById('session-timer-display').style.display = 'none';
-        }
-        document.getElementById('exercise_selector').selectedIndex = 0;
-        document.getElementById('sys_subtitle').innerText = "대기 중... 운동을 선택해주세요.";
+        
+        const timerDisplay = document.getElementById('session-timer-display');
+        if(timerDisplay) timerDisplay.style.display = 'none';
+        
+        const selector = document.getElementById('exercise_selector');
+        if(selector) selector.selectedIndex = 0;
+        
+        const subTitle = document.getElementById('sys_subtitle');
+        if(subTitle) subTitle.innerText = "대기 중... 운동을 선택해주세요.";
+        
         const feedbackEl = document.getElementById('main_feedback');
-        feedbackEl.innerText = '"대기 중입니다..."';
-        feedbackEl.style.backgroundColor = "#e3f2fd";
-        feedbackEl.style.color = "#0d47a1";
-        document.getElementById('rep_count_main').innerText = 0;
+        if(feedbackEl) {
+            feedbackEl.innerText = '"대기 중입니다..."';
+            feedbackEl.style.backgroundColor = "#e3f2fd";
+            feedbackEl.style.color = "#0d47a1";
+        }
+        
+        const repEl = document.getElementById('rep_count_main');
+        if(repEl) repEl.innerText = 0;
+        
+        const rightBox = document.getElementById('metric_box_right');
+        if (rightBox) rightBox.style.display = 'block';
+        
+        const leftBox = document.getElementById('metric_box_left');
+        if (leftBox) {
+            leftBox.classList.add('border-bottom', 'pb-4');
+            leftBox.classList.remove('pb-0');
+        }
         
         if (angleChart) {
             angleChart.data.labels = [];
@@ -102,35 +123,75 @@ const UIManager = {
         this.currentExercise = exerciseValue; 
         this.previousRepCount = 0; 
         this.hideAllDots();
+        
         const selector = document.getElementById('exercise_selector');
         if (selector) selector.value = exerciseValue;
-        document.getElementById('sys_subtitle').innerText = `${exerciseName} 실 실시간 모니터링 시스템`;
+        
+        const subTitle = document.getElementById('sys_subtitle');
+        if(subTitle) subTitle.innerText = `${exerciseName} 실시간 모니터링 시스템`;
+
+        const chartTitle = document.getElementById('chart_title');
+        const leftLabel = document.getElementById('main_metric_label_left');
+        const rightLabel = document.getElementById('main_metric_label_right');
 
         if (exerciseValue === 'lateral_raise') {
-            document.getElementById('chart_title').innerHTML = '<i class="fas fa-chart-line text-info"></i> 실시간 관절 궤적 (사레레)';
-            document.getElementById('main_metric_label_left').innerText = "좌측 최고 도달";
-            document.getElementById('main_metric_label_right').innerText = "우측 최고 도달";
+            const rightBox = document.getElementById('metric_box_right');
+            if (rightBox) rightBox.style.display = 'block';
+            
+            const leftBox = document.getElementById('metric_box_left');
+            if (leftBox) {
+                leftBox.classList.add('border-bottom', 'pb-4');
+                leftBox.classList.remove('pb-0');
+            }
+
+            if(chartTitle) chartTitle.innerHTML = '<i class="fas fa-chart-line text-info"></i> 실시간 관절 궤적 (사레레)';
+            if(leftLabel) leftLabel.innerText = "좌측 최고 도달 각도";
+            if(rightLabel) rightLabel.innerText = "우측 최고 도달 각도";
             document.getElementById('dot_lat_left')?.classList.add('dot-active');
             document.getElementById('dot_lat_right')?.classList.add('dot-active');
+            
         } else if (exerciseValue === 'shoulder_press') {
-            document.getElementById('chart_title').innerHTML = '<i class="fas fa-chart-line text-warning"></i> 실시간 관절 궤적 (숄더 프레스)';
-            document.getElementById('main_metric_label_left').innerText = "어깨 평균 각도";
-            document.getElementById('main_metric_label_right').innerText = "팔꿈치 평균 각도";
+            const rightBox = document.getElementById('metric_box_right');
+            if (rightBox) rightBox.style.display = 'block';
+            
+            const leftBox = document.getElementById('metric_box_left');
+            if (leftBox) {
+                leftBox.classList.add('border-bottom', 'pb-4');
+                leftBox.classList.remove('pb-0');
+            }
+
+            if(chartTitle) chartTitle.innerHTML = '<i class="fas fa-chart-line text-warning"></i> 실시간 관절 궤적 (숄더 프레스)';
+            if(leftLabel) leftLabel.innerText = "어깨 평균 각도";
+            if(rightLabel) rightLabel.innerText = "팔꿈치 평균 각도";
             document.getElementById('dot_press_left')?.classList.add('dot-active');
             document.getElementById('dot_press_right')?.classList.add('dot-active');
+            
         } else if (exerciseValue === 'bicep_curl') {
-            document.getElementById('chart_title').innerHTML = '<i class="fas fa-chart-line text-success"></i> 실시간 관절 궤적 (바벨 이두컬)';
-            document.getElementById('main_metric_label_left').innerText = "평균 팔꿈치 각도";
-            document.getElementById('main_metric_label_right').innerText = "평균 위팔(상완) 각도";
+            const rightBox = document.getElementById('metric_box_right');
+            if (rightBox) rightBox.style.display = 'none';
+            
+            const leftBox = document.getElementById('metric_box_left');
+            if (leftBox) {
+                leftBox.classList.remove('border-bottom', 'pb-4');
+                leftBox.classList.add('pb-0');
+            }
+
+            if(chartTitle) chartTitle.innerHTML = '<i class="fas fa-chart-line text-success"></i> 실시간 관절 궤적 (바벨 이두컬)';
+            if(leftLabel) leftLabel.innerText = "팔꿈치 평균 각도"; 
+            
             document.getElementById('dot_curl_left')?.classList.add('dot-active');
             document.getElementById('dot_curl_right')?.classList.add('dot-active');
         }
 
         const feedbackEl = document.getElementById('main_feedback');
-        feedbackEl.innerText = "운동이 시작되었습니다. 준비 자세를 취해주세요.";
-        feedbackEl.style.backgroundColor = "#e8f5e9"; 
-        feedbackEl.style.color = "#2e7d32";
-        document.getElementById('rep_count_main').innerText = 0;
+        if(feedbackEl) {
+            feedbackEl.innerText = "운동이 시작되었습니다. 준비 자세를 취해주세요.";
+            feedbackEl.style.backgroundColor = "#e8f5e9"; 
+            feedbackEl.style.color = "#2e7d32";
+        }
+        
+        const repEl = document.getElementById('rep_count_main');
+        if(repEl) repEl.innerText = 0;
     },
 
     updateDashboard: function(data) {
@@ -146,28 +207,34 @@ const UIManager = {
 
         if(data.rep_count !== undefined) {
             const newCount = parseInt(data.rep_count);
-            document.getElementById('rep_count_main').innerText = newCount;
+            const repEl = document.getElementById('rep_count_main');
+            if(repEl) repEl.innerText = newCount;
             if (newCount > this.previousRepCount) this.playRewardAnimation();
             this.previousRepCount = newCount; 
         }
 
-        if(data.last_feedback) document.getElementById('main_feedback').innerText = data.last_feedback;
+        if(data.last_feedback) {
+            const fbEl = document.getElementById('main_feedback');
+            if(fbEl) fbEl.innerText = data.last_feedback;
+        }
 
         if (exType === 'lateral_raise') {
             let metrics = data.elderly_pt_metrics || {};
-            if(document.getElementById('main_max_rom_left')) {
-                document.getElementById('main_max_rom_left').innerText = Math.round(data.realtime_joints?.left_shoulder || metrics.max_rom_left || 0);
-                document.getElementById('main_max_rom_right').innerText = Math.round(data.realtime_joints?.right_shoulder || metrics.max_rom_right || 0);
-            }
+            const leftEl = document.getElementById('main_max_rom_left');
+            const rightEl = document.getElementById('main_max_rom_right');
+            if(leftEl) leftEl.innerText = Math.round(data.realtime_joints?.left_shoulder || metrics.max_rom_left || 0);
+            if(rightEl) rightEl.innerText = Math.round(data.realtime_joints?.right_shoulder || metrics.max_rom_right || 0);
+            
         } else if (exType === 'shoulder_press') {
-            if(document.getElementById('main_max_rom_left')) {
-                document.getElementById('main_max_rom_left').innerText = Math.round(data.realtime_joints?.left_shoulder || data.avg_shoulder_angle || 0);
-                document.getElementById('main_max_rom_right').innerText = Math.round(data.realtime_joints?.right_shoulder || data.avg_elbow_angle || 0);
-            }
+            const leftEl = document.getElementById('main_max_rom_left');
+            const rightEl = document.getElementById('main_max_rom_right');
+            if(leftEl) leftEl.innerText = Math.round(data.realtime_joints?.left_shoulder || data.avg_shoulder_angle || 0);
+            if(rightEl) rightEl.innerText = Math.round(data.realtime_joints?.right_shoulder || data.avg_elbow_angle || 0);
+            
         } else if (exType === 'bicep_curl') {
-            if(document.getElementById('main_max_rom_left')) {
-                document.getElementById('main_max_rom_left').innerText = Math.round(data.realtime_joints?.left_shoulder || data.avg_elbow_angle || 0);
-                document.getElementById('main_max_rom_right').innerText = Math.round(data.realtime_joints?.right_shoulder || data.avg_upper_arm_angle || 0);
+            const leftEl = document.getElementById('main_max_rom_left');
+            if(leftEl) {
+                leftEl.innerText = Math.round(data.realtime_joints?.left_elbow || data.realtime_joints?.right_elbow || data.min_elbow_angle || data.avg_elbow_angle || 0);
             }
         }
 
@@ -177,19 +244,46 @@ const UIManager = {
     },
 
     playRewardAnimation: function() {
-        confetti({ particleCount: 150, spread: 90, origin: { y: 0.6 }, colors: ['#FFD700', '#FFA500', '#1E90FF', '#32CD32'], zIndex: 9999 });
+        if(typeof confetti === "function") {
+            confetti({ particleCount: 150, spread: 90, origin: { y: 0.6 }, colors: ['#FFD700', '#FFA500', '#1E90FF', '#32CD32'], zIndex: 9999 });
+        }
     },
 
-    updateConnectionStatus: function(isOnline) {
-        const statusEl = document.getElementById('connection-status');
-        if (isOnline) {
-            statusEl.innerHTML = '<i class="fas fa-wifi"></i> 실시간 연동 중';
-            statusEl.className = "badge bg-success p-2 fs-6 me-3";
-        } else {
-            statusEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 연결 대기 중...';
-            statusEl.className = "badge bg-secondary p-2 fs-6 me-3";
-            this.stopSessionTimer();
+    initChart: function() {
+        const canvas = document.getElementById('jointAngleChart');
+        if (!canvas) return; 
+        
+        const ctx = canvas.getContext('2d');
+        if (angleChart) angleChart.destroy(); 
+
+        angleChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [], 
+                datasets: [
+                    { label: '좌측', data: [], borderColor: '#198754', backgroundColor: 'rgba(25, 135, 84, 0.1)', borderWidth: 2, tension: 0.4, pointRadius: 0 },
+                    { label: '우측', data: [], borderColor: '#0d6efd', backgroundColor: 'rgba(13, 110, 253, 0.1)', borderWidth: 2, tension: 0.4, pointRadius: 0 }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: { y: { min: 0, max: 180, title: { display: true, text: 'Angle (Deg)' } }, x: { display: true } },
+                plugins: { legend: { position: 'top' } }, animation: false 
+            }
+        });
+    },
+
+    updateRealtimeChart: function(leftAngle, rightAngle) {
+        if (!angleChart) return; 
+        
+        const now = new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        angleChart.data.labels.push(now);
+        angleChart.data.datasets[0].data.push(leftAngle);
+        angleChart.data.datasets[1].data.push(rightAngle);
+        if (angleChart.data.labels.length > 50) {
+            angleChart.data.labels.shift(); angleChart.data.datasets[0].data.shift(); angleChart.data.datasets[1].data.shift();
         }
+        angleChart.update('none'); 
     },
 
     generateGrowthReport: function() {
@@ -198,11 +292,14 @@ const UIManager = {
         const reportDots = ['report_dot_lat_left', 'report_dot_lat_right', 'report_dot_press_left', 'report_dot_press_right', 'report_dot_curl_left', 'report_dot_curl_right'];
 
         if (!this.lastDataSnapshot) {
-            document.getElementById('report_total_score').innerText = "0";
-            document.getElementById('report_table_body').innerHTML = '<tr><td colspan="4" class="py-3 text-muted">데이터를 분석 중입니다...</td></tr>';
+            const totalEl = document.getElementById('report_total_score');
+            if(totalEl) totalEl.innerText = "0";
+            
+            const tableBody = document.getElementById('report_table_body');
+            if(tableBody) tableBody.innerHTML = '<tr><td colspan="4" class="py-3 text-muted">데이터를 분석 중입니다...</td></tr>';
+            
             this.updateRadarChart(0, 0, 0);
 
-            // 🌟 데이터가 없으면 이미지와 점을 숨기고 placeholder를 띄움
             if(anatomyImg) anatomyImg.style.display = 'none';
             if(anatomyPlaceholder) anatomyPlaceholder.style.display = 'block';
             reportDots.forEach(id => { const el = document.getElementById(id); if(el) el.style.display = 'none'; });
@@ -210,7 +307,6 @@ const UIManager = {
             return;
         }
 
-        // 🌟 데이터가 들어왔으므로 placeholder 숨기고 이미지를 띄움
         if(anatomyImg) anatomyImg.style.display = 'inline-block';
         if(anatomyPlaceholder) anatomyPlaceholder.style.display = 'none';
         reportDots.forEach(id => { const el = document.getElementById(id); if(el) el.style.display = 'none'; });
@@ -219,28 +315,39 @@ const UIManager = {
         const exType = data.exercise_type || this.currentExercise;
         const scores = data.report_scores || {};
         
-        let mobilityScore = scores.mobility_score !== undefined ? scores.mobility_score : 0;
-        let stabilityScore = scores.stability_score !== undefined ? scores.stability_score : 50;
-        let postureAccuracy = scores.posture_accuracy !== undefined ? scores.posture_accuracy : (data.good_posture_ratio || data.performance_stats?.good_posture_ratio || 0);
+        let rawMobility = scores.mobility_score !== undefined ? scores.mobility_score : 0;
+        let rawStability = scores.stability_score !== undefined ? scores.stability_score : 50;
+        let rawAccuracy = scores.posture_accuracy !== undefined ? scores.posture_accuracy : (data.good_posture_ratio || data.performance_stats?.good_posture_ratio || 0);
         
-        document.getElementById('report_date').innerText = new Date().toISOString().split('T')[0];
-        document.getElementById('report_total_score').innerText = mobilityScore + stabilityScore;
+        let scaledMobility = Math.round((rawMobility / 50) * 40) || 0;
+        let scaledStability = Math.round((rawStability / 50) * 40) || 0;
+        let scaledAccuracy = Math.round((rawAccuracy / 100) * 40) || 0;
+        let totalScore120 = scaledMobility + scaledStability + scaledAccuracy;
+
+        const reportDateEl = document.getElementById('report_date');
+        if(reportDateEl) reportDateEl.innerText = new Date().toISOString().split('T')[0];
         
-        // 👇 [핵심 수정 부분] PC2에서 AI 분석 결과를 받아오는 로직
+        const reportTotalEl = document.getElementById('report_total_score');
+        if(reportTotalEl) reportTotalEl.innerText = totalScore120;
+        
         const aiCommentBox = document.getElementById('report_ai_comment');
-        if (data.ai_comment) {
-            // DB에 ai_comment 값이 들어왔다면 그대로 화면에 표출
-            aiCommentBox.innerText = data.ai_comment;
-        } else {
-            // 아직 값이 안 들어왔다면 (PC2 연산 대기 중) 사용자 친화적인 대기 메시지 표출
-            aiCommentBox.innerText = "데이터 취합 완료! 시스템(PC2)에서 AI 분석 결과를 생성하고 있습니다. 잠시만 기다려주세요...";
+        if (aiCommentBox) {
+            // 🌟 [핵심 수정 부분] session_ai_feedback을 최우선으로 받아서 렌더링!
+            let finalFeedback = data.session_ai_feedback || data.ai_comment;
+            
+            if (finalFeedback) {
+                aiCommentBox.innerText = finalFeedback;
+            } else {
+                aiCommentBox.innerText = "데이터 취합 완료! 시스템(PC2)에서 AI 분석 결과를 생성하고 있습니다. 잠시만 기다려주세요...";
+            }
         }
-        // 👆 -----------------------------------------------------------
 
         let tableHTML = '';
 
         if (exType === 'lateral_raise') {
-            document.getElementById('report_exercise_title').innerText = "3. 세부 지표 및 타겟 부위 분석 (사레레)";
+            const titleEl = document.getElementById('report_exercise_title');
+            if(titleEl) titleEl.innerText = "3. 세부 지표 및 타겟 부위 분석 (사레레)";
+            
             if(anatomyImg) anatomyImg.src = 'images/body_outline_shoulder.png';
             const dotL = document.getElementById('report_dot_lat_left'); if(dotL) dotL.style.display = 'block';
             const dotR = document.getElementById('report_dot_lat_right'); if(dotR) dotR.style.display = 'block';
@@ -311,7 +418,9 @@ const UIManager = {
             `;
 
         } else if (exType === 'shoulder_press') {
-            document.getElementById('report_exercise_title').innerText = "3. 세부 지표 및 타겟 부위 분석 (숄더 프레스)";
+            const titleEl = document.getElementById('report_exercise_title');
+            if(titleEl) titleEl.innerText = "3. 세부 지표 및 타겟 부위 분석 (숄더 프레스)";
+            
             if(anatomyImg) anatomyImg.src = 'images/body_outline_shoulder.png';
             const dotL = document.getElementById('report_dot_press_left'); if(dotL) dotL.style.display = 'block';
             const dotR = document.getElementById('report_dot_press_right'); if(dotR) dotR.style.display = 'block';
@@ -361,23 +470,26 @@ const UIManager = {
             `;
 
         } else if (exType === 'bicep_curl') {
-            document.getElementById('report_exercise_title').innerText = "3. 세부 지표 및 타겟 부위 분석 (바벨 이두컬)";
+            const titleEl = document.getElementById('report_exercise_title');
+            if(titleEl) titleEl.innerText = "3. 세부 지표 및 타겟 부위 분석 (바벨 이두컬)";
+            
             if(anatomyImg) anatomyImg.src = 'images/body_outline_bicep.png';
             const dotL = document.getElementById('report_dot_curl_left'); if(dotL) dotL.style.display = 'block';
             const dotR = document.getElementById('report_dot_curl_right'); if(dotR) dotR.style.display = 'block';
 
             let warns = data.warning_counts || {};
-            
             let totalFrames = data.frame_count || 1; 
             let isolationPercent = (((warns.elbows_not_close_to_body || 0) / totalFrames) * 100).toFixed(1);
             let cheatPercent = (((warns.body_not_straight || 0) / totalFrames) * 100).toFixed(1);
             let balancePercent = (((warns.arm_balance_issue || 0) / totalFrames) * 100).toFixed(1);
+            
+            let peakFlexion = data.min_elbow_angle !== undefined ? data.min_elbow_angle : (data.avg_elbow_angle || 0);
 
             tableHTML += `
                 <tr>
                     <td rowspan="2" class="fw-bold bg-light">관절 가동성<br><small class="text-muted fw-normal">Mobility</small></td>
-                    <td class="text-start"><strong>평균 팔꿈치 수축 각도 (Elbow Flexion)</strong><br><small class="text-muted"></td>
-                    <td class="fw-bold text-primary">${Math.round(data.avg_elbow_angle || 0)}°</td>
+                    <td class="text-start"><strong>최대 팔꿈치 수축 각도 (Peak Flexion)</strong><br><small class="text-muted"></td>
+                    <td class="fw-bold text-primary">${Math.round(peakFlexion)}°</td>
                     <td>50° 이하 수축</td>
                 </tr>
                 <tr>
@@ -410,12 +522,19 @@ const UIManager = {
             `;
         }
 
-        document.getElementById('report_table_body').innerHTML = tableHTML;
-        this.updateRadarChart(mobilityScore * 2, stabilityScore * 2, postureAccuracy);
+        const tBody = document.getElementById('report_table_body');
+        if(tBody) tBody.innerHTML = tableHTML;
+        
+        let radarMobility = (rawMobility / 50) * 100;
+        let radarStability = (rawStability / 50) * 100;
+        this.updateRadarChart(radarMobility, radarStability, rawAccuracy);
     },
 
     updateRadarChart: function(mob100, stab100, posture100) {
-        const ctx = document.getElementById('reportRadarChart').getContext('2d');
+        const canvas = document.getElementById('reportRadarChart');
+        if (!canvas) return; 
+        
+        const ctx = canvas.getContext('2d');
         if (reportChart) { reportChart.destroy(); } 
 
         reportChart = new Chart(ctx, {

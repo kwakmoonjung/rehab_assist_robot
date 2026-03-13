@@ -13,12 +13,10 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
     <style>
-        /* 리포트 부록(DB 파라미터)용 텍스트 스타일 */
         .param-table th { background-color: #343a40 !important; color: white !important; font-size: 0.9rem; text-align: center; vertical-align: middle; }
         .param-table td { font-size: 0.85rem; vertical-align: middle; padding: 10px; }
         .param-code { background-color: #f1f3f5; padding: 3px 8px; border-radius: 4px; font-family: monospace; color: #d63384; font-weight: bold; font-size: 0.85rem;}
         .param-category { background-color: #e9ecef !important; font-weight: bold; color: #495057 !important; text-align: left !important; padding-left: 15px !important; }
-        /* 산출 방식 박스 스타일 */
         .calc-box { font-size: 0.8rem; background-color: #ffffff; border-radius: 6px; padding: 8px; margin-top: 10px; line-height: 1.4; color: #495057;}
     </style>
 </head>
@@ -26,9 +24,14 @@
 
 <div class="container-fluid px-4 py-3">
     <div class="d-flex justify-content-between align-items-center mb-3">
-        <div>
-            <h3 class="header-title mb-0"><i class="fas fa-robot text-primary"></i> SILVER HEALTH CLUB <i class="fas fa-trophy text-warning"></i></h3>
-            <small class="text-muted fw-bold" id="sys_subtitle">대기 중... 운동을 선택해주세요.</small> 
+        <div class="d-flex align-items-center">
+            <div>
+                <h3 class="header-title mb-0"><i class="fas fa-robot text-primary"></i> SILVER HEALTH CLUB <i class="fas fa-trophy text-warning"></i></h3>
+                <small class="text-muted fw-bold" id="sys_subtitle">대기 중... 운동을 선택해주세요.</small> 
+            </div>
+            <span id="ui_current_user" class="badge bg-info text-dark fs-6 ms-4 shadow-sm" style="display: none;">
+                <i class="fas fa-user"></i> 로그인 대기 중
+            </span>
         </div>
         <div class="d-flex align-items-center">
             <span class="badge bg-dark p-2 fs-6 me-2" id="session-timer-display" style="display: none;">
@@ -37,6 +40,11 @@
             <span class="badge bg-secondary p-2 fs-6 me-3" id="connection-status">
                 <i class="fas fa-spinner fa-spin"></i> 연결 대기 중...
             </span>
+            
+            <button id="btn_show_planner" class="btn btn-warning btn-lg me-2 shadow-sm" data-bs-toggle="modal" data-bs-target="#plannerModal">
+                <i class="fas fa-calendar-check"></i> AI 추천 루틴
+            </button>
+            
             <button id="btn_show_report" class="btn btn-success btn-lg me-2 shadow-sm" data-bs-toggle="modal" data-bs-target="#reportModal">
                 <i class="fas fa-file-medical-alt"></i> 맞춤형 운동 리포트
             </button>
@@ -63,15 +71,7 @@
                                 <option value="bicep_curl">바벨 이두컬 (Bicep Curl)</option>
                             </select>
                         </div>
-
-                        <div class="border-start ps-4" style="display: none;">
-                            <span class="text-muted fw-bold d-block" style="font-size: 0.9rem;">로봇 시스템 상태</span>
-                            <span id="robot_system_status" class="badge bg-secondary p-2 mt-1 fs-5 shadow-sm">
-                                <i class="fas fa-power-off"></i> 시스템 대기 중
-                            </span>
-                        </div>
                     </div>
-                    
                     <div class="text-end border-start ps-4">
                         <i class="fas fa-microphone-alt text-danger blinking-icon fs-1"></i>
                     </div>
@@ -97,7 +97,6 @@
                 </div>
             </div>
         </div>
-        
         <div class="col-lg-3">
             <div class="card h-100 shadow-sm border-0" style="background-color: #ffffff;">
                 <div class="card-header py-1 fs-7 fw-bold text-center"><i class="fas fa-child"></i> 집중 자극 부위</div>
@@ -114,7 +113,6 @@
                 </div>
             </div>
         </div>
-        
         <div class="col-lg-3">
             <div class="card h-100 text-center shadow-sm border-0" style="background-color: #e3f2fd;">
                 <div class="card-header bg-primary text-white fs-7 py-1 fw-bold">실시간 AI 트레이너</div>
@@ -139,13 +137,13 @@
                         </div>
                         <div class="col-md-6 d-flex flex-column justify-content-center">
                             <div class="row w-100">
-                                <div class="col-12 mb-4 border-bottom pb-4">
-                                    <small class="text-muted fw-bold d-block fs-4 mb-2" id="main_metric_label_left">어깨 평균 각도</small>
-                                    <span class="fw-bold text-dark" style="font-size: 4.5rem;"><span id="main_max_rom_left">0</span>°</span>
+                                <div class="col-12 mb-4 border-bottom pb-4" id="metric_box_left">
+                                    <small class="text-muted fw-bold d-block fs-4 mb-2" id="main_metric_label_left">관절 측정 대기 중</small>
+                                    <span class="fw-bold text-dark" style="font-size: 4.5rem;"><span id="main_max_rom_left">-</span><span style="font-size: 2rem;"></span></span>
                                 </div>
-                                <div class="col-12 pt-2">
-                                    <small class="text-muted fw-bold d-block fs-4 mb-2" id="main_metric_label_right">팔꿈치 평균 각도</small>
-                                    <span class="fw-bold text-dark" style="font-size: 4.5rem;"><span id="main_max_rom_right">0</span>°</span>
+                                <div class="col-12 pt-2" id="metric_box_right">
+                                    <small class="text-muted fw-bold d-block fs-4 mb-2" id="main_metric_label_right">관절 측정 대기 중</small>
+                                    <span class="fw-bold text-dark" style="font-size: 4.5rem;"><span id="main_max_rom_right">-</span><span style="font-size: 2rem;"></span></span>
                                 </div>
                             </div>
                         </div>
@@ -154,14 +152,21 @@
             </div>
         </div>
     </div>
+</div>
 
-    
-    <div id="admin_panel" style="display: none; margin-top: 20px;">
-        <div class="alert alert-dark fw-bold py-2"><i class="fas fa-terminal"></i> Engineering Metrics (Debug Only)</div>
-        <div class="row g-3 text-center">
-            <div class="col-4"><div class="card p-2">목표교정각도: <span id="target_prom">0</span></div></div>
-            <div class="col-4"><div class="card p-2">정자세비율: <span id="good_posture_ratio">0</span>%</div></div>
-            <div class="col-4"><div class="card p-2">전체프레임: <span id="metric_val_3">0</span></div></div>
+<div class="modal fade" id="plannerModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-warning text-dark border-0">
+                <h5 class="modal-title fw-bold"><i class="fas fa-calendar-check text-dark"></i> AI 맞춤형 추천 루틴</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4 bg-light" id="planner_content">
+                <div class="text-center py-5 text-muted">
+                    <i class="fas fa-spinner fa-spin fs-1 mb-3"></i>
+                    <h5>플래너 데이터를 동기화 중입니다...</h5>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -173,7 +178,6 @@
                 <h5 class="modal-title fw-bold"><i class="fas fa-file-medical-alt text-success"></i> 분석 리포트</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            
             <div class="modal-body p-4">
                 <div id="printable_report" class="bg-white mx-auto shadow-sm p-5" style="max-width: 210mm; min-height: 297mm; color: #333;">
                     
@@ -184,7 +188,7 @@
                         </div>
                         <div class="text-end">
                             <p class="mb-0 fs-5"><strong>회원명:</strong> <span id="report_user_name">익명 회원님</span></p>
-                            <p class="mb-0 text-muted" style="font-size: 0.9rem;"><strong>검사일시:</strong> <span id="report_date">2026-03-11</span></p>
+                            <p class="mb-0 text-muted" style="font-size: 0.9rem;"><strong>검사일시:</strong> <span id="report_date">2026-03-13</span></p>
                         </div>
                     </div>
 
@@ -197,7 +201,7 @@
                                     <p class="small text-muted mb-2">안전하게 도달할 수 있는 최대 관절 각도를 의미합니다. 이 점수가 높을수록 일상생활의 활동 반경이 넓어집니다.</p>
                                     <div class="calc-box border-primary border-start border-3 mt-auto">
                                         <strong class="text-primary"><i class="fas fa-calculator"></i> 계산 방식 (40점 배점)</strong><br>
-                                        운동별 핵심 관절의 실제 도달 각도를 목표 기준치(예: 사레레 80°, 숄더프레스 145°, 바벨컬 50° 수축)와 비교하여 40점 만점으로 비례 환산합니다.
+                                        운동별 핵심 관절의 실제 도달 각도를 목표 기준치와 비교하여 40점 만점으로 비례 환산합니다.
                                     </div>
                                 </div>
                             </div>
@@ -207,7 +211,7 @@
                                     <p class="small text-muted mb-2">운동 중 몸통 흔들림이나 반동을 통제하는 능력입니다. 안정성이 높을수록 부상 및 낙상 위험이 감소합니다.</p>
                                     <div class="calc-box border-warning border-start border-3 mt-auto">
                                         <strong class="text-warning" style="color: #d39e00 !important;"><i class="fas fa-calculator"></i> 계산 방식 (40점 배점)</strong><br>
-                                        기본 40점에서 시작하여, AI가 <b>허리 반동, 양팔 불균형, 궤도 이탈</b> 등의 부적절한 자세 경고를 감지할 때마다 1회당 8점씩 감점하여 산출합니다.
+                                        기본 40점에서 시작하여, 부적절한 자세 경고를 감지할 때마다 1회당 8점씩 감점하여 산출합니다.
                                     </div>
                                 </div>
                             </div>
@@ -217,7 +221,7 @@
                                     <p class="small text-muted mb-2">목적에 맞는 완벽한 자세를 유지한 시간의 비율입니다. 정확도가 높을수록 타겟 근육에 올바른 자극이 전달됩니다.</p>
                                     <div class="calc-box border-success border-start border-3 mt-auto">
                                         <strong class="text-success"><i class="fas fa-calculator"></i> 계산 방식 (40점 배점)</strong><br>
-                                        비전 센서가 분석한 전체 유효 프레임 중, 흔들림이나 보상 작용 없이 올바른 부하가 걸린 정자세 시간의 <b>비율(%)을 40점 만점으로 환산</b>하여 반영합니다.
+                                        전체 유효 프레임 중 정자세 시간의 <b>비율(%)을 40점 만점으로 환산</b>하여 반영합니다.
                                     </div>
                                 </div>
                             </div>
@@ -227,7 +231,6 @@
                     <div class="mb-4">
                         <h5 class="fw-bold text-dark border-start border-4 border-primary ps-2 mb-3">2. 종합 분석 결과</h5>
                         <div class="row align-items-center border rounded p-3 m-0 bg-white shadow-sm">
-                            
                             <div class="col-md-6 text-center border-end py-4">
                                 <div class="fw-bold d-flex justify-content-center align-items-baseline" style="white-space: nowrap;">
                                     <span class="text-success" id="report_total_score" style="font-size: 3.5rem; line-height: 1;">0</span>
@@ -238,7 +241,6 @@
                             <div class="col-md-6 d-flex justify-content-center">
                                 <canvas id="reportRadarChart" style="max-height: 250px;"></canvas>
                             </div>
-                            
                         </div>
                     </div>
 
@@ -268,11 +270,9 @@
                                     <div class="card-header py-2 fs-6 fw-bold text-center bg-secondary text-white"><i class="fas fa-child"></i> 집중 자극 부위</div>
                                     <div class="card-body p-0 d-flex justify-content-center align-items-center" style="min-height: 250px; background-color: #ffffff; overflow: hidden; text-align: center;">
                                         <div style="position: relative; display: inline-block;">
-                                            
                                             <div id="report_anatomy_placeholder" class="text-muted" style="padding-top: 100px; font-size: 0.9rem;">
                                                 <i class="fas fa-info-circle mb-2 fs-4 opacity-50 d-block"></i>운동 데이터 대기 중
                                             </div>
-
                                             <img src="images/body_outline_shoulder.png" id="report_anatomy_img" alt="Human Anatomy" style="height: 210px; opacity: 1.0; display: none;" 
                                                 onerror="this.onerror=null; this.src='https://www.svgrepo.com/show/308194/human-body-anatomy-health-medical.svg';">
                                             
@@ -438,7 +438,7 @@
                         </div>
                     </div>
                 </div>
-            </div>
+                </div>
             
             <div class="modal-footer justify-content-center bg-white border-top">
                 <button type="button" class="btn btn-secondary btn-lg me-2" data-bs-dismiss="modal">닫기</button>
@@ -453,44 +453,129 @@
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script src="js/firebase_config.js"></script>b4
 <script src="js/ui_manager.js"></script>
-<script src="js/database_service.js"></script>
 
 <script>
-function downloadPDF() {
-    const btn = document.querySelector('button[onclick="downloadPDF()"]');
-    const originalText = btn.innerHTML;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> PDF 생성 중... (약 3~5초 소요)';
-    btn.disabled = true;
-
-    // 복제(Clone)하지 않고 원본 요소를 그대로 가져옵니다.
-    const element = document.getElementById('printable_report');
-    
-    const dateStr = new Date().toISOString().split('T')[0];
-    const opt = {
-        margin: [10, 0, 10, 0],
-        filename: `SilverHealthClub_Report_${dateStr}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { 
-            scale: 2, 
-            useCORS: true,
-            backgroundColor: '#ffffff' // 배경색을 명시적으로 흰색으로 지정
-        },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    const firebaseConfig = {
+        databaseURL: "https://rehab-aa1ee-default-rtdb.asia-southeast1.firebasedatabase.app/"
     };
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
+    const db = firebase.database();
 
-    // 요소를 직접 지정하여 바로 PDF로 변환합니다.
-    html2pdf().set(opt).from(element).save().then(() => {
-        btn.innerHTML = originalText;
-        btn.disabled = false;
-    }).catch(err => {
-        console.error("PDF 생성 에러: ", err);
-        btn.innerHTML = originalText;
-        btn.disabled = false;
-        alert("PDF 생성 중 문제가 발생했습니다. 키보드 F12를 눌러 콘솔 창을 확인해주세요.");
+    db.ref('.info/connected').on('value', (snap) => {
+        if(typeof UIManager !== 'undefined') {
+            UIManager.updateConnectionStatus(snap.val() === true);
+        }
     });
-}
+
+    db.ref('live_current_session').on('value', (snapshot) => {
+        const data = snapshot.val();
+        if (data && typeof UIManager !== 'undefined') {
+            UIManager.updateDashboard(data);
+        }
+    });
+
+    db.ref().on('value', (snapshot) => {
+        const allData = snapshot.val();
+        if (!allData) return;
+
+        let latestPlanner = null;
+        let recognizedUser = "익명 회원님";
+
+        for (const userId in allData) {
+            if (userId === "live_current_session" || userId === "system") continue;
+            
+            recognizedUser = userId; 
+            
+            const dates = allData[userId];
+            for (const date in dates) {
+                if (dates[date] && dates[date].planner) {
+                    const planners = dates[date].planner;
+                    const plannerKeys = Object.keys(planners);
+                    if (plannerKeys.length > 0) {
+                        const lastKey = plannerKeys[plannerKeys.length - 1]; 
+                        latestPlanner = planners[lastKey];
+                    }
+                }
+            }
+        }
+
+        const uiUserEl = document.getElementById('ui_current_user');
+        if(uiUserEl && recognizedUser !== "unknown_user") {
+            uiUserEl.style.display = 'inline-block';
+            uiUserEl.innerHTML = `<i class="fas fa-user"></i> ${recognizedUser}님`;
+        }
+        const reportUserEl = document.getElementById('report_user_name');
+        if(reportUserEl && recognizedUser !== "unknown_user") {
+            reportUserEl.innerText = recognizedUser;
+        }
+
+        if (latestPlanner && latestPlanner.analysis) {
+            renderPlannerModal(latestPlanner.analysis);
+        }
+    });
+
+    function renderPlannerModal(analysis) {
+        const contentEl = document.getElementById('planner_content');
+        if(!contentEl) return;
+        
+        const insight = analysis.all_time_summary?.insight || analysis.last_day_summary?.insight;
+        if(!insight) return;
+
+        const keywords = insight.recommended_focus_keywords ? insight.recommended_focus_keywords.join(", ") : "전신 안정화";
+        const topWarning = insight.top_warning?.name_kr || "없음";
+        const domEx = insight.dominant_exercise?.name_kr || "없음";
+
+        contentEl.innerHTML = `
+            <div class="alert alert-warning border-warning shadow-sm">
+                <h5 class="fw-bold mb-2"><i class="fas fa-lightbulb"></i> 다음 운동 포커스 추천</h5>
+                <p class="mb-0 fs-5 text-dark fw-bold">👉 [ ${keywords} ] 집중 훈련 권장</p>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="card bg-white border-0 p-4 h-100 shadow-sm text-center">
+                        <span class="text-muted fw-bold d-block mb-2">가장 많이 한 운동</span>
+                        <h3 class="text-primary fw-bold mb-0">${domEx}</h3>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card bg-white border-0 p-4 h-100 shadow-sm text-center">
+                        <span class="text-muted fw-bold d-block mb-2">가장 잦은 주의사항</span>
+                        <h3 class="text-danger fw-bold mb-0">${topWarning}</h3>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function downloadPDF() {
+        const btn = document.querySelector('button[onclick="downloadPDF()"]');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> PDF 생성 중... (약 3~5초 소요)';
+        btn.disabled = true;
+
+        const element = document.getElementById('printable_report');
+        const dateStr = new Date().toISOString().split('T')[0];
+        const opt = {
+            margin: [10, 0, 10, 0],
+            filename: `SilverHealthClub_Report_${dateStr}.pdf`,
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
+
+        html2pdf().set(opt).from(element).save().then(() => {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }).catch(err => {
+            console.error("PDF 생성 에러: ", err);
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+            alert("PDF 생성 중 문제가 발생했습니다.");
+        });
+    }
 </script>
 </body>
 </html>
