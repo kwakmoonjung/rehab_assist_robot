@@ -44,6 +44,7 @@ class RehabUserInterface(Node):
         self.is_analysis_completed = False
         self.last_session_data = None
         self.last_report_scores = None
+        self.current_user_id = "unknown_user" # [추가] 기본 사용자 설정
 
         # 🌟 1. 센서 데이터 구독 (기존)
         self.subscription = self.create_subscription(
@@ -60,12 +61,24 @@ class RehabUserInterface(Node):
             self.system_command_callback,
             10
         )
+
+        # 🌟 3. 사용자 인식 데이터 구독 (신규)
+        self.user_subscription = self.create_subscription(
+            String,
+            '/recognized_user',
+            self.recognized_user_callback,
+            10
+        )
         
         self.get_logger().info("📡 '/exercise_result' 및 '/system_command' 토픽 구독 시작...")
 
-    # 🌟 [신규] 시스템 명령어 처리 콜백 함수
-    # 🌟 [수정됨] 시스템 명령어 처리 콜백 함수
-    # 🌟 [수정본] 시스템 명령어 처리 콜백 함수
+    # [추가] 사용자 인식 콜백 함수
+    def recognized_user_callback(self, msg):
+        user_id = msg.data.strip()
+        if user_id:
+            self.current_user_id = user_id
+
+    # 시스템 명령어 처리 콜백 함수
     def system_command_callback(self, msg):
         command = msg.data.strip()
         self.get_logger().info(f"시스템 명령어 수신: {command}")
@@ -101,14 +114,12 @@ class RehabUserInterface(Node):
             
         elif command == 'CORRECTION':
             self.get_logger().info("🛠️ 자세 교정 명령 수신.")
-            # Firebase에 상태 업데이트 명령 추가
-            live_ref.update({"system_status": "CORRECTION"})
 
     # 정량화 및 비대칭도 산출 로직 (유지)
     def calculate_report_scores(self, data):
         ex_type = data.get("exercise_type", "unknown_exercise")
         mobility_score = 0
-        stability_score = 40 # 기본 40점에서 감점
+        stability_score = 50 
         max_l = 0
         max_r = 0
         
@@ -117,15 +128,15 @@ class RehabUserInterface(Node):
             max_l = metrics.get("max_rom_left", 0)
             max_r = metrics.get("max_rom_right", 0)
             max_rom = max(max_l, max_r)
-            mobility_score = min(40, (max_rom / 80.0) * 40)
+            mobility_score = min(50, (max_rom / 80.0) * 50)
             
             warns = data.get("warning_counts", {})
             lean_back = warns.get("lean_back_momentum", 0)
-            stability_score = max(0, 40 - (lean_back * 8)) # 1회당 8점 감점
+            stability_score = max(0, 50 - (lean_back * 10))
 
         elif ex_type == 'shoulder_press':
             avg_shoulder = data.get("avg_shoulder_angle", 0)
-            mobility_score = min(40, (avg_shoulder / 145.0) * 40)
+            mobility_score = min(50, (avg_shoulder / 145.0) * 50)
             
             joints = data.get("realtime_joints", {})
             max_l = joints.get("left_shoulder", avg_shoulder)
@@ -134,11 +145,11 @@ class RehabUserInterface(Node):
             warns = data.get("warning_counts", {})
             arm_balance = warns.get("arm_balance_issue", 0)
             body_not_straight = warns.get("body_not_straight", 0)
-            stability_score = max(0, 40 - ((arm_balance + body_not_straight) * 8))
+            stability_score = max(0, 50 - ((arm_balance + body_not_straight) * 10))
 
         elif ex_type == 'bicep_curl':
             min_elbow = data.get("avg_elbow_angle", 180)
-            mobility_score = min(40, ((180 - min_elbow) / (180 - 50.0)) * 40)
+            mobility_score = min(50, ((180 - min_elbow) / (180 - 50.0)) * 50)
             
             joints = data.get("realtime_joints", {})
             max_l = joints.get("left_shoulder", min_elbow)
@@ -146,10 +157,9 @@ class RehabUserInterface(Node):
             
             warns = data.get("warning_counts", {})
             elbow_not_close = warns.get("elbows_not_close_to_body", 0)
-            stability_score = max(0, 40 - (elbow_not_close * 8))
+            stability_score = max(0, 50 - (elbow_not_close * 10))
 
         posture_accuracy = data.get("good_posture_ratio", data.get("performance_stats", {}).get("good_posture_ratio", 80))
-        posture_score = (posture_accuracy / 100.0) * 40 # 40점 만점 환산
 
         asym_diff = abs(max_l - max_r)
         highest_rom = max(max_l, max_r)
@@ -158,12 +168,12 @@ class RehabUserInterface(Node):
         return {
             "mobility_score": round(mobility_score),
             "stability_score": round(stability_score),
-            "posture_score": round(posture_score), # 신규 산출된 40점 만점 점수
             "posture_accuracy": posture_accuracy,
             "asymmetry_ratio": asym_ratio,
-            "total_score": round(mobility_score) + round(stability_score) + round(posture_score)
+            "total_score": round(mobility_score) + round(stability_score)
         }
 
+    # OpenAI 통신 및 Firebase 기록 (유지)
     def request_openai_analysis(self, data, report_scores):
         try:
             exercise = data.get("exercise_type", "운동")
@@ -171,14 +181,13 @@ class RehabUserInterface(Node):
             total = report_scores.get("total_score", 0)
             mob = report_scores.get("mobility_score", 0)
             stab = report_scores.get("stability_score", 0)
-            pos_score = report_scores.get("posture_score", 0)
+            posture = report_scores.get("posture_accuracy", 0)
             asym = report_scores.get("asymmetry_ratio", 0)
 
-            # AI 프롬프트도 120점 만점 체계로 수정
             prompt = f"""
             당신은 시니어 헬스케어 전문 AI 로봇 트레이너입니다. 어르신의 이번 '{exercise}' 운동 세션이 종료되었습니다.
-            총 {rep}회를 수행했으며, 종합 점수는 120점 만점에 {total}점입니다. 
-            (세부 지표: 관절 가동성 {mob}/40점, 자세 안정성 {stab}/40점, 정자세 정확도 {pos_score}/40점, 좌우 팔 비대칭도 {asym}%)
+            총 {rep}회를 수행했으며, 종합 점수는 100점 만점에 {total}점입니다. 
+            (세부 지표: 관절 가동성 {mob}/50점, 자세 안정성 {stab}/50점, 정자세 정확도 {posture}%, 좌우 팔 비대칭도 {asym}%)
             
             이 임상적 리포트 데이터를 바탕으로, 어르신에게 따뜻하고 격려하는 말투로 이번 운동 총평과 개선점 1가지를 합쳐 50자 이내로 코멘트해주세요.
             """
@@ -196,11 +205,13 @@ class RehabUserInterface(Node):
             live_ref = db.reference('live_current_session')
             live_ref.update({"ai_comment": ai_comment})
             
+            # [변경할 코드]
             raw_start_time = data.get("session_started_at", "default")
             date_only = raw_start_time.split(" ")[0]
             session_key = raw_start_time.replace("-", "").replace(":", "").replace(" ", "_")
             
-            db_ref = db.reference(f'{date_only}/{exercise}/{session_key}')
+            # 4단 구조: 사용자 / 날짜 / 운동종류 / 세션고유키
+            db_ref = db.reference(f'{self.current_user_id}/{date_only}/{exercise}/{session_key}')
             db_ref.update({"ai_comment": ai_comment})
 
         except Exception as e:
@@ -220,8 +231,8 @@ class RehabUserInterface(Node):
             date_only = raw_start_time.split(" ")[0] # "2026-03-12 17:05:00"에서 날짜만 추출
             session_key = raw_start_time.replace("-", "").replace(":", "").replace(" ", "_")
             
-            # 3단 구조: 날짜 / 운동종류 / 세션고유키
-            db_path = f'{date_only}/{exercise_type}/{session_key}'
+            # 4단 구조: 사용자 / 날짜 / 운동종류 / 세션고유키
+            db_path = f'{self.current_user_id}/{date_only}/{exercise_type}/{session_key}'
             db_ref = db.reference(db_path)
             db_ref.set(data)
             
