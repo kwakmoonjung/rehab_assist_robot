@@ -192,39 +192,6 @@ const UIManager = {
         }
     },
 
-    initChart: function() {
-        const ctx = document.getElementById('jointAngleChart').getContext('2d');
-        if (angleChart) angleChart.destroy(); 
-
-        angleChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: [], 
-                datasets: [
-                    { label: '좌측', data: [], borderColor: '#198754', backgroundColor: 'rgba(25, 135, 84, 0.1)', borderWidth: 2, tension: 0.4, pointRadius: 0 },
-                    { label: '우측', data: [], borderColor: '#0d6efd', backgroundColor: 'rgba(13, 110, 253, 0.1)', borderWidth: 2, tension: 0.4, pointRadius: 0 }
-                ]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                scales: { y: { min: 0, max: 180, title: { display: true, text: 'Angle (Deg)' } }, x: { display: true } },
-                plugins: { legend: { position: 'top' } }, animation: false 
-            }
-        });
-    },
-
-    updateRealtimeChart: function(leftAngle, rightAngle) {
-        if (!angleChart) { this.initChart(); }
-        const now = new Date().toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        angleChart.data.labels.push(now);
-        angleChart.data.datasets[0].data.push(leftAngle);
-        angleChart.data.datasets[1].data.push(rightAngle);
-        if (angleChart.data.labels.length > 50) {
-            angleChart.data.labels.shift(); angleChart.data.datasets[0].data.shift(); angleChart.data.datasets[1].data.shift();
-        }
-        angleChart.update('none'); 
-    },
-
     generateGrowthReport: function() {
         const anatomyImg = document.getElementById('report_anatomy_img');
         const anatomyPlaceholder = document.getElementById('report_anatomy_placeholder');
@@ -258,7 +225,17 @@ const UIManager = {
         
         document.getElementById('report_date').innerText = new Date().toISOString().split('T')[0];
         document.getElementById('report_total_score').innerText = mobilityScore + stabilityScore;
-        document.getElementById('report_ai_comment').innerText = data.ai_comment || "모든 세션이 종료된 후 AI가 맞춤형 종합 처방을 제공합니다.";
+        
+        // 👇 [핵심 수정 부분] PC2에서 AI 분석 결과를 받아오는 로직
+        const aiCommentBox = document.getElementById('report_ai_comment');
+        if (data.ai_comment) {
+            // DB에 ai_comment 값이 들어왔다면 그대로 화면에 표출
+            aiCommentBox.innerText = data.ai_comment;
+        } else {
+            // 아직 값이 안 들어왔다면 (PC2 연산 대기 중) 사용자 친화적인 대기 메시지 표출
+            aiCommentBox.innerText = "데이터 취합 완료! 시스템(PC2)에서 AI 분석 결과를 생성하고 있습니다. 잠시만 기다려주세요...";
+        }
+        // 👆 -----------------------------------------------------------
 
         let tableHTML = '';
 
@@ -273,7 +250,6 @@ const UIManager = {
             let rAssist = data.robot_assist_parameters || {};
             let warns = data.warning_counts || {};
 
-            // 💡 전체 프레임 대비 퍼센트(%) 계산 로직 추가
             let totalFrames = data.frame_count > 0 ? data.frame_count : 1;
             let leanBackPct = ((warns.lean_back_momentum || 0) / totalFrames * 100).toFixed(1);
             let armBalancePct = ((warns.arm_balance_issue || 0) / totalFrames * 100).toFixed(1);
@@ -342,10 +318,8 @@ const UIManager = {
             
             let warns = data.warning_counts || {};
             
-            // 전체 프레임 수 가져오기 (0으로 나누는 오류를 방지하기 위해 최소값 1 설정)
             let totalFrames = data.frame_count > 0 ? data.frame_count : 1;
             
-            // 경고 카운트를 퍼센트(%)로 변환 (소수점 첫째 자리까지 표기)
             let tooLowPct = ((warns.too_low || 0) / totalFrames * 100).toFixed(1);
             let bodyNotStraightPct = ((warns.body_not_straight || 0) / totalFrames * 100).toFixed(1);
             let armBalancePct = ((warns.arm_balance_issue || 0) / totalFrames * 100).toFixed(1);
@@ -393,40 +367,45 @@ const UIManager = {
             const dotR = document.getElementById('report_dot_curl_right'); if(dotR) dotR.style.display = 'block';
 
             let warns = data.warning_counts || {};
+            
+            let totalFrames = data.frame_count || 1; 
+            let isolationPercent = (((warns.elbows_not_close_to_body || 0) / totalFrames) * 100).toFixed(1);
+            let cheatPercent = (((warns.body_not_straight || 0) / totalFrames) * 100).toFixed(1);
+            let balancePercent = (((warns.arm_balance_issue || 0) / totalFrames) * 100).toFixed(1);
 
             tableHTML += `
                 <tr>
-                    <td rowspan="2" class="fw-bold bg-light align-middle" style="border-bottom: 2px solid #858796;">관절 가동성<br><small class="text-muted fw-normal">Mobility</small></td>
-                    <td class="text-start align-middle"><strong>평균 팔꿈치 수축 각도</strong><br><small class="text-muted">(Elbow Flexion)</small></td>
-                    <td class="fw-bold text-primary align-middle">${Math.round(data.avg_elbow_angle || 0)}°</td>
-                    <td class="align-middle">50° 이하 수축</td>
-                </tr>
-                <tr style="border-bottom: 2px solid #858796;">
-                    <td class="text-start align-middle"><strong>평균 위팔 고정 각도</strong><br><small class="text-muted">(Upper Arm Angle)</small></td>
-                    <td class="fw-bold text-primary align-middle">${Math.round(data.avg_upper_arm_angle || 0)}°</td>
-                    <td class="align-middle">10° 미만</td>
+                    <td rowspan="2" class="fw-bold bg-light">관절 가동성<br><small class="text-muted fw-normal">Mobility</small></td>
+                    <td class="text-start"><strong>평균 팔꿈치 수축 각도 (Elbow Flexion)</strong><br><small class="text-muted"></td>
+                    <td class="fw-bold text-primary">${Math.round(data.avg_elbow_angle || 0)}°</td>
+                    <td>50° 이하 수축</td>
                 </tr>
                 <tr>
-                    <td rowspan="3" class="fw-bold bg-light align-middle" style="border-bottom: 2px solid #858796;">자세 안정성<br><small class="text-muted fw-normal">Stability</small></td>
-                    <td class="text-start align-middle"><strong>상체 평균 기울기</strong><br><small class="text-muted">(Trunk Angle)</small></td>
-                    <td class="fw-bold text-danger align-middle">${data.avg_trunk_angle || 0}°</td>
-                    <td class="align-middle">5° 미만</td>
+                    <td class="text-start"><strong>평균 위팔 고정 각도 (Upper Arm Angle)</strong><br><small class="text-muted"></td>
+                    <td class="fw-bold text-primary">${Math.round(data.avg_upper_arm_angle || 0)}°</td>
+                    <td>10° 미만</td>
                 </tr>
                 <tr>
-                    <td class="text-start align-middle"><strong>고립 이탈 경고</strong><br><small class="text-muted">(Isolation Break)</small></td>
-                    <td class="fw-bold text-danger align-middle">${warns.elbows_not_close_to_body || 0}회</td>
-                    <td class="align-middle">5% 미만</td>
+                    <td rowspan="3" class="fw-bold bg-light">자세 안정성<br><small class="text-muted fw-normal">Stability</small></td>
+                    <td class="text-start"><strong>상체 평균 기울기 (Trunk Angle)</strong><br><small class="text-muted"></td>
+                    <td class="fw-bold text-danger">${data.avg_trunk_angle || 0}°</td>
+                    <td>5° 미만</td>
                 </tr>
-                <tr style="border-bottom: 2px solid #858796;">
-                    <td class="text-start align-middle"><strong>보상 작용 및 불균형</strong><br><small class="text-muted">(Compensations)</small></td>
-                    <td class="fw-bold text-danger align-middle">허리 반동: ${warns.body_not_straight || 0}회<br>양팔 불균형: ${warns.arm_balance_issue || 0}회</td>
-                    <td class="align-middle">5% 미만</td>
+                <tr>
+                    <td class="text-start"><strong>고립 이탈 경고 (Isolation Break)</strong><br><small class="text-muted"></td>
+                    <td class="fw-bold text-danger">${isolationPercent}%</td>
+                    <td>5% 미만</td>
                 </tr>
-                <tr style="border-bottom: 2px solid #858796;">
-                    <td class="fw-bold bg-light align-middle">운동 추적률<br><small class="text-muted fw-normal">Tracking</small></td>
-                    <td class="text-start align-middle"><strong>정자세 비율</strong><br><small class="text-muted">(Good Posture Ratio)</small></td>
-                    <td class="fw-bold text-success align-middle">${data.good_posture_ratio || 0}%</td>
-                    <td class="align-middle">80% 이상</td>
+                <tr>
+                    <td class="text-start"><strong>보상 작용 및 불균형 (Compensations)</strong><br><small class="text-muted"></td>
+                    <td class="fw-bold text-danger">허리 반동: ${cheatPercent}%<br>양팔 불균형: ${balancePercent}%</td>
+                    <td>5% 미만</td>
+                </tr>
+                <tr>
+                    <td rowspan="2" class="fw-bold bg-light">운동 추적률<br><small class="text-muted fw-normal">Tracking</small></td>
+                    <td class="text-start"><strong>정자세 비율 (Good Posture Ratio)</strong><br><small class="text-muted"></td>
+                    <td class="fw-bold text-success">${data.good_posture_ratio || 0}%</td>
+                    <td>80% 이상</td>
                 </tr>
             `;
         }
