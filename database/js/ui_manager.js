@@ -272,6 +272,11 @@ const UIManager = {
             let pStats = data.performance_stats || {};
             let rAssist = data.robot_assist_parameters || {};
             let warns = data.warning_counts || {};
+
+            // 💡 전체 프레임 대비 퍼센트(%) 계산 로직 추가
+            let totalFrames = data.frame_count > 0 ? data.frame_count : 1;
+            let leanBackPct = ((warns.lean_back_momentum || 0) / totalFrames * 100).toFixed(1);
+            let armBalancePct = ((warns.arm_balance_issue || 0) / totalFrames * 100).toFixed(1);
             
             tableHTML += `
                 <tr>
@@ -313,7 +318,7 @@ const UIManager = {
                 </tr>
                 <tr style="border-bottom: 2px solid #858796;">
                     <td class="text-start align-middle"><strong>자세 경고 지표</strong><br><small class="text-muted">(Warnings)</small></td>
-                    <td class="fw-bold text-danger align-middle">반동: ${warns.lean_back_momentum || 0}회<br>불균형: ${warns.arm_balance_issue || 0}회</td>
+                    <td class="fw-bold text-danger align-middle">반동: ${leanBackPct}%<br>불균형: ${armBalancePct}%</td>
                     <td class="align-middle">5% 미만</td>
                 </tr>
                 <tr>
@@ -321,6 +326,11 @@ const UIManager = {
                     <td class="text-start align-middle"><strong>정자세 비율</strong><br><small class="text-muted">(Good Posture Ratio)</small></td>
                     <td class="fw-bold text-success align-middle">${pStats.good_posture_ratio || 0}%</td>
                     <td class="align-middle">80% 이상</td>
+                </tr>
+                <tr style="border-bottom: 2px solid #858796;">
+                    <td class="text-start align-middle"><strong>추적 세션 데이터</strong><br><small class="text-muted">(Session Data)</small></td>
+                    <td class="fw-bold text-secondary align-middle">${data.frame_count || 0} 프레임<br>${data.session_duration_sec || 0}초</td>
+                    <td class="align-middle">-</td>
                 </tr>
             `;
 
@@ -331,6 +341,14 @@ const UIManager = {
             const dotR = document.getElementById('report_dot_press_right'); if(dotR) dotR.style.display = 'block';
             
             let warns = data.warning_counts || {};
+            
+            // 전체 프레임 수 가져오기 (0으로 나누는 오류를 방지하기 위해 최소값 1 설정)
+            let totalFrames = data.frame_count > 0 ? data.frame_count : 1;
+            
+            // 경고 카운트를 퍼센트(%)로 변환 (소수점 첫째 자리까지 표기)
+            let tooLowPct = ((warns.too_low || 0) / totalFrames * 100).toFixed(1);
+            let bodyNotStraightPct = ((warns.body_not_straight || 0) / totalFrames * 100).toFixed(1);
+            let armBalancePct = ((warns.arm_balance_issue || 0) / totalFrames * 100).toFixed(1);
 
             tableHTML += `
                 <tr>
@@ -352,12 +370,12 @@ const UIManager = {
                 </tr>
                 <tr>
                     <td class="text-start align-middle"><strong>하강 범위 이탈</strong><br><small class="text-muted">(ROM Warnings)</small></td>
-                    <td class="fw-bold text-danger align-middle">과도한 내림: ${warns.too_low || 0}회</td>
+                    <td class="fw-bold text-danger align-middle">과도한 내림: ${tooLowPct}%</td>
                     <td class="align-middle">5% 미만</td>
                 </tr>
                 <tr style="border-bottom: 2px solid #858796;">
                     <td class="text-start align-middle"><strong>보상 작용 및 불균형</strong><br><small class="text-muted">(Compensations)</small></td>
-                    <td class="fw-bold text-danger align-middle">허리 반동: ${warns.body_not_straight || 0}회<br>양팔 불균형: ${warns.arm_balance_issue || 0}회</td>
+                    <td class="fw-bold text-danger align-middle">허리 반동: ${bodyNotStraightPct}%<br>양팔 불균형: ${armBalancePct}%</td>
                     <td class="align-middle">5% 미만</td>
                 </tr>
                 <tr style="border-bottom: 2px solid #858796;">
