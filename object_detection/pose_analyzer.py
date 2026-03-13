@@ -236,6 +236,9 @@ class ExerciseAnalyzer:
         cv2.line(image, r_pts[1], r_pts[2], (255, 0, 0), 3) 
         for pt in l_pts + r_pts + [nose_pt]: 
             cv2.circle(image, pt, 8, (0, 0, 255), -1)
+    
+    def reset(self):
+        pass
 
     def analyze(self, node):
         raise NotImplementedError
@@ -245,6 +248,11 @@ class ShoulderPressAnalyzer(ExerciseAnalyzer):
         self.count = 0
         self.state = "UP"
         self.tracker = SPTracker("shoulder_press", publish_callback)
+
+    def reset(self):
+        self.count = 0
+        self.state = "UP"
+        self.tracker.reset()
 
     def analyze(self, node):
         if node.fixed_raw is None or node.robot_raw is None: return None
@@ -340,6 +348,12 @@ class BicepCurlAnalyzer(ExerciseAnalyzer):
         self.DOWN_CONFIRM_FRAMES, self.UP_CONFIRM_FRAMES = 3, 2
         self.confirmed_pose_state = "DOWN"
         self.down_pose_streak, self.up_pose_streak = 0, 0
+
+    def reset(self):
+        self.count = 0
+        self.confirmed_pose_state = "DOWN"
+        self.down_pose_streak, self.up_pose_streak = 0, 0
+        self.tracker.reset()
 
     def analyze(self, node):
         if node.fixed_raw is None or node.robot_raw is None: return None
@@ -437,6 +451,14 @@ class LateralRaiseAnalyzer(ExerciseAnalyzer):
         self.eval_feedback, self.eval_color = "", (0, 255, 0)
         self.rep_has_warning = False
         self.tracker = LRTracker("lateral_raise", publish_callback)
+
+    def reset(self):
+        self.count = 0
+        self.state = "DOWN"
+        self.current_rep_peak = 0.0
+        self.eval_feedback, self.eval_color = "", (0, 255, 0)
+        self.rep_has_warning = False
+        self.tracker.reset()
 
     def analyze(self, node):
         if node.fixed_raw is None or node.robot_raw is None: return None
@@ -624,7 +646,7 @@ class PoseAnalyzerAllNode(Node):
         if new_mode in self.analyzers:
             self.current_exercise = new_mode
             self.current_analyzer = self.analyzers[self.current_exercise]
-            self.current_analyzer.tracker.reset()
+            self.current_analyzer.reset()
             self.get_logger().info(f"🔄 운동 모드가 [{new_mode}]로 변경되었습니다.")
         else:
             self.get_logger().warn(f"⚠️ 지원하지 않는 운동 모드입니다: {new_mode}")
@@ -632,7 +654,7 @@ class PoseAnalyzerAllNode(Node):
     def set_exercise_cb(self, request, response):
         self.is_exercising = request.data
         if self.is_exercising:
-            self.current_analyzer.tracker.reset() 
+            self.current_analyzer.reset()
             msg = f"✅ [{self.current_exercise}] 운동 분석을 시작합니다."
         else:
             self.current_analyzer.tracker.build_and_emit()
