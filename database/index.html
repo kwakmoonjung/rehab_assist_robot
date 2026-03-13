@@ -64,7 +64,7 @@
                             </select>
                         </div>
 
-                        <div class="border-start ps-4">
+                        <div class="border-start ps-4" style="display: none;">
                             <span class="text-muted fw-bold d-block" style="font-size: 0.9rem;">로봇 시스템 상태</span>
                             <span id="robot_system_status" class="badge bg-secondary p-2 mt-1 fs-5 shadow-sm">
                                 <i class="fas fa-power-off"></i> 시스템 대기 중
@@ -170,7 +170,7 @@
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content" style="background-color: #f0f2f5;">
             <div class="modal-header bg-dark text-white">
-                <h5 class="modal-title fw-bold"><i class="fas fa-file-medical-alt text-success"></i> 전문 임상 분석 리포트</h5>
+                <h5 class="modal-title fw-bold"><i class="fas fa-file-medical-alt text-success"></i> 분석 리포트</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             
@@ -179,7 +179,7 @@
                     
                     <div class="border-bottom border-3 border-dark pb-3 mb-4 d-flex justify-content-between align-items-end">
                         <div>
-                            <h2 class="fw-bold mb-1" style="letter-spacing: -1px;">맞춤형 운동 성장 리포트</h2>
+                            <h2 class="fw-bold mb-1" style="letter-spacing: -1px;"> 분석 리포트</h2>
                             <h5 class="text-secondary mb-0"><i class="fas fa-robot text-primary"></i> SILVER HEALTH CLUB</h5>
                         </div>
                         <div class="text-end">
@@ -196,8 +196,8 @@
                                     <h6 class="fw-bold text-primary mb-2"><i class="fas fa-child"></i> 관절 가동성 (Mobility)</h6>
                                     <p class="small text-muted mb-2">안전하게 도달할 수 있는 최대 관절 각도를 의미합니다. 이 점수가 높을수록 일상생활의 활동 반경이 넓어집니다.</p>
                                     <div class="calc-box border-primary border-start border-3 mt-auto">
-                                        <strong class="text-primary"><i class="fas fa-calculator"></i> 계산 방식 (50점 배점)</strong><br>
-                                        운동별 핵심 관절의 실제 도달 각도를 목표 기준치(예: 사레레 80°, 숄더프레스 145°)와 비교하여 비율에 따라 점수를 환산합니다.
+                                        <strong class="text-primary"><i class="fas fa-calculator"></i> 계산 방식 (40점 배점)</strong><br>
+                                        운동별 핵심 관절의 실제 도달 각도를 목표 기준치(예: 사레레 80°, 숄더프레스 145°, 바벨컬 50° 수축)와 비교하여 40점 만점으로 비례 환산합니다.
                                     </div>
                                 </div>
                             </div>
@@ -206,8 +206,8 @@
                                     <h6 class="fw-bold text-warning mb-2"><i class="fas fa-balance-scale"></i> 자세 안정성 (Stability)</h6>
                                     <p class="small text-muted mb-2">운동 중 몸통 흔들림이나 반동을 통제하는 능력입니다. 안정성이 높을수록 부상 및 낙상 위험이 감소합니다.</p>
                                     <div class="calc-box border-warning border-start border-3 mt-auto">
-                                        <strong class="text-warning" style="color: #d39e00 !important;"><i class="fas fa-calculator"></i> 계산 방식 (50점 배점)</strong><br>
-                                        기본 50점에서 시작하여, AI가 <b>허리 반동, 양팔 불균형, 이탈</b> 등의 부적절한 자세 경고를 감지할 때마다 1회당 10점씩 감점하여 산출합니다.
+                                        <strong class="text-warning" style="color: #d39e00 !important;"><i class="fas fa-calculator"></i> 계산 방식 (40점 배점)</strong><br>
+                                        기본 40점에서 시작하여, AI가 <b>허리 반동, 양팔 불균형, 궤도 이탈</b> 등의 부적절한 자세 경고를 감지할 때마다 1회당 8점씩 감점하여 산출합니다.
                                     </div>
                                 </div>
                             </div>
@@ -216,8 +216,8 @@
                                     <h6 class="fw-bold text-success mb-2"><i class="fas fa-bullseye"></i> 정자세 정확도 (Accuracy)</h6>
                                     <p class="small text-muted mb-2">목적에 맞는 완벽한 자세를 유지한 시간의 비율입니다. 정확도가 높을수록 타겟 근육에 올바른 자극이 전달됩니다.</p>
                                     <div class="calc-box border-success border-start border-3 mt-auto">
-                                        <strong class="text-success"><i class="fas fa-calculator"></i> 계산 방식 (지표 직접 반영)</strong><br>
-                                        비전 센서가 분석한 전체 유효 프레임 중, 흔들림이나 보상 작용 없이 타겟 근육에 올바른 부하가 걸린 정자세 시간의 <b>비율(%)을 그대로 반영</b>합니다.
+                                        <strong class="text-success"><i class="fas fa-calculator"></i> 계산 방식 (40점 배점)</strong><br>
+                                        비전 센서가 분석한 전체 유효 프레임 중, 흔들림이나 보상 작용 없이 올바른 부하가 걸린 정자세 시간의 <b>비율(%)을 40점 만점으로 환산</b>하여 반영합니다.
                                     </div>
                                 </div>
                             </div>
@@ -227,20 +227,24 @@
                     <div class="mb-4">
                         <h5 class="fw-bold text-dark border-start border-4 border-primary ps-2 mb-3">2. 종합 분석 결과</h5>
                         <div class="row align-items-center border rounded p-3 m-0 bg-white shadow-sm">
-                            <div class="col-md-5 text-center border-end py-4">
-                                <div class="fw-bold" style="font-size: 3rem; white-space: nowrap;">
-                                    <span class="text-success" id="report_total_score">0</span>
-                                    <span class="text-secondary"> / 100 점</span>
+                            
+                            <div class="col-md-6 text-center border-end py-4">
+                                <div class="fw-bold d-flex justify-content-center align-items-baseline" style="white-space: nowrap;">
+                                    <span class="text-success" id="report_total_score" style="font-size: 3.5rem; line-height: 1;">0</span>
+                                    <span class="text-secondary ms-2" style="font-size: 1.8rem;">/ 120 점</span>
                                 </div>
-                                <small class="text-muted d-block mt-2">가동성 점수 + 안정성 점수 합산</small>
+                                <small class="text-muted d-block mt-3">가동성 + 안정성 + 정확도 환산 합산</small>
                             </div>
-                            <div class="col-md-7 d-flex justify-content-center">
+                            <div class="col-md-6 d-flex justify-content-center">
                                 <canvas id="reportRadarChart" style="max-height: 250px;"></canvas>
                             </div>
+                            
                         </div>
                     </div>
 
-                    <div class="mb-4">
+                    <div class="html2pdf__page-break"></div>
+
+                    <div class="mb-4" style="padding-top: 10px;">
                         <h5 class="fw-bold text-dark border-start border-4 border-primary ps-2 mb-3" id="report_exercise_title">3. 세부 지표 및 타겟 부위 분석</h5>
                         <div class="row g-3">
                             <div class="col-md-8">
@@ -250,7 +254,7 @@
                                             <th width="20%">평가 항목</th>
                                             <th width="40%">세부 지표</th>
                                             <th width="20%">측정 결과</th>
-                                            <th width="20%">목표 / 참고치</th>
+                                            <th width="20%">참고치</th>
                                         </tr>
                                     </thead>
                                     <tbody id="report_table_body">
@@ -342,57 +346,96 @@
                         </div>
                     </div>
                    
-                    <div style="page-break-before: always; padding-top: 20px;">
-                        <h5 class="fw-bold text-dark border-start border-4 border-secondary ps-2 mb-3">부록. 데이터베이스 파라미터 사전 (Parameter Glossary)</h5>
-                        <p class="text-muted small mb-3">본 리포트 및 Firebase 데이터베이스에 실시간으로 기록되는 각 변수명(Parameter)의 임상적/시스템적 의미를 정의합니다.</p>
+                    <div style="page-break-before: always; padding-top: 10px;">
                         
-                        <table class="table table-bordered param-table shadow-sm">
+                        <h5 class="fw-bold text-dark border-start border-4 border-secondary ps-2 mb-2">데이터베이스 파라미터 사전 (Parameter Glossary)</h5>
+                        <p class="text-muted small mb-2" style="font-size: 0.8rem;">본 리포트 및 Firebase에 실시간으로 기록되는 각 변수명(Parameter)의 임상적/시스템적 의미를 정의합니다.</p>
+                        
+                        <table class="table table-bordered table-sm param-table shadow-sm mb-3">
                             <thead>
                                 <tr>
-                                    <th width="32%">DB 변수명 (Parameter)</th>
-                                    <th width="68%">임상적 의미 및 설명 (Description)</th>
+                                    <th width="30%" class="py-1">DB 변수명 (Parameter)</th>
+                                    <th width="70%" class="py-1">임상적 의미 및 설명 (Description)</th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                <tr><td colspan="2" class="param-category mt-2"><i class="fas fa-exclamation-triangle text-secondary"></i> 자세 경고 카운트 (Warning Counts)</td></tr>
+                            <tbody style="font-size: 0.75rem;">
+                                <tr><td colspan="2" class="param-category py-0 px-2 fw-bold text-dark bg-light"><i class="fas fa-exclamation-triangle text-secondary"></i> 자세 경고 카운트 (Warning Counts)</td></tr>
                                 <tr>
-                                    <td><span class="param-code">too_low</span></td>
-                                    <td><b>[숄더프레스]</b> 바벨이나 덤벨을 어깨선(기준선)보다 과도하게 아래로 내려 어깨 관절에 무리를 준 횟수입니다.</td>
+                                    <td class="py-1"><span class="param-code" style="font-size: 0.7rem;">too_low</span></td>
+                                    <td class="py-1"><b>[숄더프레스]</b> 바벨이나 덤벨을 어깨선보다 과도하게 아래로 내려 관절에 무리를 준 횟수입니다.</td>
                                 </tr>
                                 <tr>
-                                    <td><span class="param-code">bend_elbows_at_bottom</span></td>
-                                    <td><b>[숄더프레스]</b> 팔을 내리는 이완 동작 시, 기준선 아래에서 팔꿈치를 굽히며 근육의 긴장을 푸는 보상 작용이 발생한 횟수입니다.</td>
+                                    <td class="py-1"><span class="param-code" style="font-size: 0.7rem;">bend_elbows_at_bottom</span></td>
+                                    <td class="py-1"><b>[숄더프레스]</b> 기준선 아래에서 팔꿈치를 굽히며 근육의 긴장을 푸는 보상 작용이 발생한 횟수입니다.</td>
                                 </tr>
                                 <tr>
-                                    <td><span class="param-code">arms_too_high</span></td>
-                                    <td><b>[사레레]</b> 팔을 어깨선(90°) 이상으로 과도하게 높이 들어 올려 어깨 충돌 위험이 발생한 횟수입니다.</td>
+                                    <td class="py-1"><span class="param-code" style="font-size: 0.7rem;">arms_too_high</span></td>
+                                    <td class="py-1"><b>[사레레]</b> 팔을 어깨선(90°) 이상으로 과도하게 높이 들어 올려 어깨 충돌 위험이 발생한 횟수입니다.</td>
                                 </tr>
                                 <tr>
-                                    <td><span class="param-code">chest_down</span></td>
-                                    <td><b>[사레레]</b> 운동 중 가슴이 말리거나 등이 굽어 자세가 무너진 횟수입니다.</td>
+                                    <td class="py-1"><span class="param-code" style="font-size: 0.7rem;">chest_down</span></td>
+                                    <td class="py-1"><b>[사레레]</b> 운동 중 가슴이 말리거나 등이 굽어 자세가 무너진 횟수입니다.</td>
                                 </tr>
                                 <tr>
-                                    <td><span class="param-code">lean_back_momentum</span></td>
-                                    <td><b>[사레레]</b> 무게를 들기 위해 상체를 뒤로 젖히며 허리 반동(Cheat)을 사용한 횟수입니다.</td>
+                                    <td class="py-1"><span class="param-code" style="font-size: 0.7rem;">lean_back_momentum</span></td>
+                                    <td class="py-1"><b>[사레레]</b> 무게를 들기 위해 상체를 뒤로 젖히며 허리 반동(Cheat)을 사용한 횟수입니다.</td>
                                 </tr>
                                 <tr>
-                                    <td><span class="param-code">elbows_not_close_to_body</span></td>
-                                    <td><b>[바벨컬]</b> 팔꿈치가 옆구리에서 바깥으로 심하게 벌어지며 이두근 고립이 풀린 횟수입니다.</td>
+                                    <td class="py-1"><span class="param-code" style="font-size: 0.7rem;">elbows_not_close_to_body</span></td>
+                                    <td class="py-1"><b>[바벨컬]</b> 팔꿈치가 옆구리에서 바깥으로 심하게 벌어지며 이두근 고립이 풀린 횟수입니다.</td>
                                 </tr>
                                 <tr>
-                                    <td><span class="param-code">arm_balance_issue</span></td>
-                                    <td><b>[공통]</b> 중량을 들어 올릴 때 좌/우측 팔의 속도나 도달 높이가 눈에 띄게 차이 난 횟수입니다.</td>
+                                    <td class="py-1"><span class="param-code" style="font-size: 0.7rem;">arm_balance_issue</span></td>
+                                    <td class="py-1"><b>[공통]</b> 중량을 들어 올릴 때 좌/우측 팔의 속도나 도달 높이가 눈에 띄게 차이 난 횟수입니다.</td>
                                 </tr>
                                 <tr>
-                                    <td><span class="param-code">body_not_straight</span></td>
-                                    <td><b>[공통]</b> 무거운 무게를 밀어 올리기 위해 무의식적으로 척추를 뒤로 젖히거나 옆으로 꺾는 등 상체 정렬이 무너진 횟수입니다.</td>
+                                    <td class="py-1"><span class="param-code" style="font-size: 0.7rem;">body_not_straight</span></td>
+                                    <td class="py-1"><b>[공통]</b> 무게를 올리기 위해 척추를 뒤로 젖히거나 옆으로 꺾는 등 상체 정렬이 무너진 횟수입니다.</td>
                                 </tr>
                                 <tr>
-                                    <td><span class="param-code">arms_not_visible</span></td>
-                                    <td><b>[비전]</b> 로봇 팔이나 외부 요인에 의해 팔이 카메라에 가려져 관절 추적이 끊긴 횟수입니다.</td>
+                                    <td class="py-1"><span class="param-code" style="font-size: 0.7rem;">arms_not_visible</span></td>
+                                    <td class="py-1"><b>[공통]</b> 비전 센서가 관절을 추적하던 중, 로봇 팔이나 외부 장애물에 의해 신체가 가려져 측정이 중단된 횟수입니다.</td>
                                 </tr>
                             </tbody>
                         </table>
+
+                        <h5 class="fw-bold text-dark border-start border-4 border-success ps-2 mb-2 mt-4">건강한 일상 회복을 위한 안전 가이드</h5>
+                        <p class="text-muted small mb-2" style="font-size: 0.8rem;">SILVER HEALTH CLUB은 회원님의 안전을 최우선으로 생각합니다. 운동 전후로 아래 수칙을 지켜주세요.</p>
+                        
+                        <div class="row g-1 mb-1">
+                            <div class="col-12">
+                                <div class="card shadow-sm border-0" style="border-left: 5px solid #0dcaf0 !important; background-color: #f8f9fa;">
+                                    <div class="card-body px-2 py-1">
+                                        <h6 class="fw-bold text-info mb-1" style="font-size: 0.85rem;"><i class="fas fa-wind me-1"></i>올바른 호흡법 (숨 참지 않기)</h6>
+                                        <p class="text-muted mb-0" style="font-size: 0.75rem; word-break: keep-all; line-height: 1.3;">근력 운동 중 숨을 참으면 혈압이 급격히 오를 수 있습니다. 힘을 줄 때(무게를 밀거나 들 때) 숨을 '후-' 내쉬고, 원래 자세로 돌아올 때 천천히 숨을 들이마시는 것이 중요합니다.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <div class="card shadow-sm border-0" style="border-left: 5px solid #ffc107 !important; background-color: #f8f9fa;">
+                                    <div class="card-body px-2 py-1">
+                                        <h6 class="fw-bold text-warning mb-1" style="font-size: 0.85rem; color: #d39e00 !important;"><i class="fas fa-tint me-1"></i>수분 섭취와 영양 및 휴식</h6>
+                                        <p class="text-muted mb-0" style="font-size: 0.75rem; word-break: keep-all; line-height: 1.3;">어르신들은 갈증을 늦게 느끼실 수 있으므로 운동 전, 중, 후로 미지근한 물을 조금씩 자주 드셔야 합니다. 운동 후에는 근육 회복을 돕는 영양분을 섭취하고 푹 쉬는 것이 좋습니다.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <div class="card shadow-sm border-0" style="border-left: 5px solid #dc3545 !important; background-color: #f8f9fa;">
+                                    <div class="card-body px-2 py-1">
+                                        <h6 class="fw-bold text-danger mb-1" style="font-size: 0.85rem;"><i class="fas fa-heartbeat me-1"></i>통증과 뻐근함의 구분</h6>
+                                        <p class="text-muted mb-0" style="font-size: 0.75rem; word-break: keep-all; line-height: 1.3;">운동 후 근육이 뻐근한 느낌은 자연스러운 과정입니다. 하지만 관절(어깨, 팔꿈치 등)이 찌르듯이 아프거나 붓는다면 즉시 운동을 중단하고 트레이너에게 알리세요.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <div class="card shadow-sm border-0" style="border-left: 5px solid #0d6efd !important; background-color: #f8f9fa;">
+                                    <div class="card-body px-2 py-1">
+                                        <h6 class="fw-bold text-primary mb-1" style="font-size: 0.85rem;"><i class="fas fa-brain me-1"></i>뇌 건강을 위한 건강 습관</h6>
+                                        <p class="text-muted mb-0" style="font-size: 0.75rem; word-break: keep-all; line-height: 1.3;">뇌 건강을 위해 퍼즐이나 간단한 계산 문제를 풀어보세요. 규칙적인 식습관과 함께 매일 15분 이상 명상이나 깊은 호흡을 하면 스트레스 해소에 도움이 됩니다.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -410,7 +453,7 @@
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script src="js/firebase_config.js"></script>
+<script src="js/firebase_config.js"></script>b4
 <script src="js/ui_manager.js"></script>
 <script src="js/database_service.js"></script>
 
@@ -421,40 +464,28 @@ function downloadPDF() {
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> PDF 생성 중... (약 3~5초 소요)';
     btn.disabled = true;
 
+    // 복제(Clone)하지 않고 원본 요소를 그대로 가져옵니다.
     const element = document.getElementById('printable_report');
-    const clonedElement = element.cloneNode(true);
-    const container = document.createElement('div');
-    container.style.position = 'absolute';
-    container.style.left = '-9999px';
-    container.style.top = '0';
-    container.style.width = '210mm'; 
-    container.style.background = 'white';
-    container.appendChild(clonedElement);
-    document.body.appendChild(container);
-
-    const originalCanvases = element.querySelectorAll('canvas');
-    const clonedCanvases = clonedElement.querySelectorAll('canvas');
-    originalCanvases.forEach((canvas, index) => {
-        const ctx = clonedCanvases[index].getContext('2d');
-        ctx.drawImage(canvas, 0, 0);
-    });
-
+    
     const dateStr = new Date().toISOString().split('T')[0];
     const opt = {
         margin: [10, 0, 10, 0],
         filename: `SilverHealthClub_Report_${dateStr}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true },
+        html2canvas: { 
+            scale: 2, 
+            useCORS: true,
+            backgroundColor: '#ffffff' // 배경색을 명시적으로 흰색으로 지정
+        },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
 
-    html2pdf().set(opt).from(container).save().then(() => {
-        document.body.removeChild(container);
+    // 요소를 직접 지정하여 바로 PDF로 변환합니다.
+    html2pdf().set(opt).from(element).save().then(() => {
         btn.innerHTML = originalText;
         btn.disabled = false;
     }).catch(err => {
         console.error("PDF 생성 에러: ", err);
-        document.body.removeChild(container);
         btn.innerHTML = originalText;
         btn.disabled = false;
         alert("PDF 생성 중 문제가 발생했습니다. 키보드 F12를 눌러 콘솔 창을 확인해주세요.");

@@ -3,15 +3,13 @@
 
 import os
 import json
-import threading
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String  
 import firebase_admin
 from firebase_admin import credentials, db
-from openai import OpenAI
 from dotenv import load_dotenv
-from ament_index_python.packages import get_package_share_directory # 추가
+from ament_index_python.packages import get_package_share_directory
 
 package_path = get_package_share_directory("rehab_assist_robot")
 
@@ -20,33 +18,33 @@ load_dotenv(dotenv_path=env_path)
 
 FIREBASE_KEY_PATH = os.path.join(package_path, "resource", "serviceAccountKey.json")
 FIREBASE_DB_URL = "https://rehab-aa1ee-default-rtdb.asia-southeast1.firebasedatabase.app/"
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 class RehabUserInterface(Node):
     def __init__(self):
         super().__init__('rehab_user_interface')
         
+        # Firebase 연동
         try:
             if not firebase_admin._apps:
                 cred = credentials.Certificate(FIREBASE_KEY_PATH)
                 firebase_admin.initialize_app(cred, {'databaseURL': FIREBASE_DB_URL})
             self.get_logger().info("🔥 Firebase 연동 성공! 클라우드 브릿지 가동.")
+            
+            # 노드 시작 시 UI에 실시간 연동 중 상태 알림
+            db.reference('live_current_session').update({
+                "system_status": "STANDBY",
+                "last_feedback": "로봇 시스템이 준비되었습니다. 명령을 기다립니다."
+            })
         except Exception as e:
             self.get_logger().error(f"Firebase 초기화 실패: {e}")
-
-        try:
-            self.ai_client = OpenAI(api_key=OPENAI_API_KEY)
-            self.get_logger().info("🤖 OpenAI API 연동 준비 완료.")
-        except Exception as e:
-            self.get_logger().error(f"OpenAI 초기화 실패: {e}")
 
         # 분석 상태 관리 및 최신 데이터 저장을 위한 변수
         self.is_analysis_completed = False
         self.last_session_data = None
         self.last_report_scores = None
-        self.current_user_id = "unknown_user" # [추가] 기본 사용자 설정
+        self.current_user_id = "unknown_user" 
 
-        # 🌟 1. 센서 데이터 구독 (기존)
+        # 🌟 1. 센서 데이터 구독
         self.subscription = self.create_subscription(
             String,
             '/exercise_result',
@@ -54,7 +52,7 @@ class RehabUserInterface(Node):
             10
         )
         
-        # 🌟 2. 시스템 명령어 구독 (신규)
+        # 🌟 2. 시스템 명령어 구독
         self.cmd_subscription = self.create_subscription(
             String,
             '/system_command',
@@ -62,7 +60,7 @@ class RehabUserInterface(Node):
             10
         )
 
-        # 🌟 3. 사용자 인식 데이터 구독 (신규)
+        # 🌟 3. 사용자 인식 데이터 구독
         self.user_subscription = self.create_subscription(
             String,
             '/recognized_user',
@@ -70,9 +68,9 @@ class RehabUserInterface(Node):
             10
         )
         
-        self.get_logger().info("📡 '/exercise_result' 및 '/system_command' 토픽 구독 시작...")
+        self.get_logger().info("📡 토픽 구독 시작 (PC1은 중계만 담당, AI 연산은 PC2에서 수행).")
 
-    # [추가] 사용자 인식 콜백 함수
+    # 사용자 인식 콜백 함수
     def recognized_user_callback(self, msg):
         user_id = msg.data.strip()
         if user_id:
@@ -83,39 +81,29 @@ class RehabUserInterface(Node):
         command = msg.data.strip()
         self.get_logger().info(f"시스템 명령어 수신: {command}")
         
-        # 🌟 Firebase 실시간 상태 업데이트를 위한 레퍼런스 추가
         live_ref = db.reference('live_current_session')
         
         if command == 'START_EXERCISE':
-            # 내부 변수 초기화
             self.is_analysis_completed = False
             self.last_session_data = None
             self.last_report_scores = None
             
-            # 🌟 [핵심 추가] Firebase에 상태를 써줘야 UI 뱃지가 변합니다!
             live_ref.update({"system_status": "START_EXERCISE"})
             self.get_logger().info("▶️ Firebase 상태 업데이트 완료: START_EXERCISE")
             
         elif command == 'END_EXERCISE':
-            # 🌟 [핵심 추가] 운동 종료 상태도 알려줍니다.
             live_ref.update({"system_status": "END_EXERCISE"})
-            
-            if not self.is_analysis_completed and self.last_session_data:
-                self.get_logger().info("🏁 END_EXERCISE 명령 감지! 최종 AI 리포트 생성을 시작합니다...")
-                self.is_analysis_completed = True
-                
-                threading.Thread(
-                    target=self.request_openai_analysis, 
-                    args=(self.last_session_data, self.last_report_scores)
-                ).start()
+            self.get_logger().info("🏁 END_EXERCISE 명령 감지! (PC2에서 AI 분석 결과를 Firebase에 올려줄 때까지 UI 대기)")
                 
         elif command == 'REPORT_EXERCISE':
+            live_ref.update({"system_status": "REPORT_EXERCISE"})
             self.get_logger().info("📊 리포트 출력 명령 수신.")
             
         elif command == 'CORRECTION':
+            live_ref.update({"system_status": "CORRECTION"})
             self.get_logger().info("🛠️ 자세 교정 명령 수신.")
 
-    # 정량화 및 비대칭도 산출 로직 (유지)
+    # 정량화 및 비대칭도 산출 로직 (기존 유지 - 데이터 가공용)
     def calculate_report_scores(self, data):
         ex_type = data.get("exercise_type", "unknown_exercise")
         mobility_score = 0
@@ -173,51 +161,7 @@ class RehabUserInterface(Node):
             "total_score": round(mobility_score) + round(stability_score)
         }
 
-    # OpenAI 통신 및 Firebase 기록 (유지)
-    def request_openai_analysis(self, data, report_scores):
-        try:
-            exercise = data.get("exercise_type", "운동")
-            rep = data.get("rep_count", 0)
-            total = report_scores.get("total_score", 0)
-            mob = report_scores.get("mobility_score", 0)
-            stab = report_scores.get("stability_score", 0)
-            posture = report_scores.get("posture_accuracy", 0)
-            asym = report_scores.get("asymmetry_ratio", 0)
-
-            prompt = f"""
-            당신은 시니어 헬스케어 전문 AI 로봇 트레이너입니다. 어르신의 이번 '{exercise}' 운동 세션이 종료되었습니다.
-            총 {rep}회를 수행했으며, 종합 점수는 100점 만점에 {total}점입니다. 
-            (세부 지표: 관절 가동성 {mob}/50점, 자세 안정성 {stab}/50점, 정자세 정확도 {posture}%, 좌우 팔 비대칭도 {asym}%)
-            
-            이 임상적 리포트 데이터를 바탕으로, 어르신에게 따뜻하고 격려하는 말투로 이번 운동 총평과 개선점 1가지를 합쳐 50자 이내로 코멘트해주세요.
-            """
-
-            response = self.ai_client.chat.completions.create(
-                model="gpt-3.5-turbo", 
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=100,
-                temperature=0.7
-            )
-            
-            ai_comment = response.choices[0].message.content.strip()
-            self.get_logger().info(f"🤖 최종 AI 분석 완료: {ai_comment}")
-
-            live_ref = db.reference('live_current_session')
-            live_ref.update({"ai_comment": ai_comment})
-            
-            # [변경할 코드]
-            raw_start_time = data.get("session_started_at", "default")
-            date_only = raw_start_time.split(" ")[0]
-            session_key = raw_start_time.replace("-", "").replace(":", "").replace(" ", "_")
-            
-            # 4단 구조: 사용자 / 날짜 / 운동종류 / 세션고유키
-            db_ref = db.reference(f'{self.current_user_id}/{date_only}/{exercise}/{session_key}')
-            db_ref.update({"ai_comment": ai_comment})
-
-        except Exception as e:
-            self.get_logger().error(f"OpenAI 최종 분석 중 에러 발생: {e}")
-
-    # 센서 데이터 수신 콜백 함수 (수정됨)
+    # 센서 데이터 수신 콜백 함수
     def exercise_result_callback(self, msg):
         try:
             data = json.loads(msg.data)
@@ -226,12 +170,10 @@ class RehabUserInterface(Node):
             report_scores = self.calculate_report_scores(data)
             data["report_scores"] = report_scores
             
-            # [변경할 코드]
             raw_start_time = data.get("session_started_at", "default")
-            date_only = raw_start_time.split(" ")[0] # "2026-03-12 17:05:00"에서 날짜만 추출
+            date_only = raw_start_time.split(" ")[0] 
             session_key = raw_start_time.replace("-", "").replace(":", "").replace(" ", "_")
             
-            # 4단 구조: 사용자 / 날짜 / 운동종류 / 세션고유키
             db_path = f'{self.current_user_id}/{date_only}/{exercise_type}/{session_key}'
             db_ref = db.reference(db_path)
             db_ref.set(data)
@@ -239,8 +181,6 @@ class RehabUserInterface(Node):
             live_ref = db.reference('live_current_session')
             live_ref.update(data)
 
-            # 🌟 [수정됨] 실시간으로 들어오는 최신 데이터를 계속 덮어씌워 둡니다.
-            # 나중에 END_EXERCISE 신호가 오면 이 변수에 담긴 데이터를 꺼내어 분석합니다.
             self.last_session_data = data
             self.last_report_scores = report_scores
 
