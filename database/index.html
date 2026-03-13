@@ -196,8 +196,8 @@
                                     <h6 class="fw-bold text-primary mb-2"><i class="fas fa-child"></i> 관절 가동성 (Mobility)</h6>
                                     <p class="small text-muted mb-2">안전하게 도달할 수 있는 최대 관절 각도를 의미합니다. 이 점수가 높을수록 일상생활의 활동 반경이 넓어집니다.</p>
                                     <div class="calc-box border-primary border-start border-3 mt-auto">
-                                        <strong class="text-primary"><i class="fas fa-calculator"></i> 계산 방식 (50점 배점)</strong><br>
-                                        운동별 핵심 관절의 실제 도달 각도를 목표 기준치(예: 사레레 80°, 숄더프레스 145°)와 비교하여 비율에 따라 점 환산합니다.
+                                        <strong class="text-primary"><i class="fas fa-calculator"></i> 계산 방식 (40점 배점)</strong><br>
+                                        운동별 핵심 관절의 실제 도달 각도를 목표 기준치(예: 사레레 80°, 숄더프레스 145°, 바벨컬 50° 수축)와 비교하여 40점 만점으로 비례 환산합니다.
                                     </div>
                                 </div>
                             </div>
@@ -206,8 +206,8 @@
                                     <h6 class="fw-bold text-warning mb-2"><i class="fas fa-balance-scale"></i> 자세 안정성 (Stability)</h6>
                                     <p class="small text-muted mb-2">운동 중 몸통 흔들림이나 반동을 통제하는 능력입니다. 안정성이 높을수록 부상 및 낙상 위험이 감소합니다.</p>
                                     <div class="calc-box border-warning border-start border-3 mt-auto">
-                                        <strong class="text-warning" style="color: #d39e00 !important;"><i class="fas fa-calculator"></i> 계산 방식 (50점 배점)</strong><br>
-                                        기본 50점에서 시작하여, AI가 <b>허리 반동, 양팔 불균형, 이탈</b> 등의 부적절한 자세 경고를 감지할 때마다 1회당 10점씩 감점하여 산출합니다.
+                                        <strong class="text-warning" style="color: #d39e00 !important;"><i class="fas fa-calculator"></i> 계산 방식 (40점 배점)</strong><br>
+                                        기본 40점에서 시작하여, AI가 <b>허리 반동, 양팔 불균형, 궤도 이탈</b> 등의 부적절한 자세 경고를 감지할 때마다 1회당 8점씩 감점하여 산출합니다.
                                     </div>
                                 </div>
                             </div>
@@ -216,8 +216,8 @@
                                     <h6 class="fw-bold text-success mb-2"><i class="fas fa-bullseye"></i> 정자세 정확도 (Accuracy)</h6>
                                     <p class="small text-muted mb-2">목적에 맞는 완벽한 자세를 유지한 시간의 비율입니다. 정확도가 높을수록 타겟 근육에 올바른 자극이 전달됩니다.</p>
                                     <div class="calc-box border-success border-start border-3 mt-auto">
-                                        <strong class="text-success"><i class="fas fa-calculator"></i> 계산 방식 (지표 직접 반영)</strong><br>
-                                        비전 센서가 분석한 전체 유효 프레임 중, 흔들림이나 보상 작용 없이 타겟 근육에 올바른 부하가 걸린 정자세 시간의 <b>비율(%)을 그대로 반영</b>합니다.
+                                        <strong class="text-success"><i class="fas fa-calculator"></i> 계산 방식 (40점 배점)</strong><br>
+                                        비전 센서가 분석한 전체 유효 프레임 중, 흔들림이나 보상 작용 없이 올바른 부하가 걸린 정자세 시간의 <b>비율(%)을 40점 만점으로 환산</b>하여 반영합니다.
                                     </div>
                                 </div>
                             </div>
@@ -230,7 +230,7 @@
                             <div class="col-md-5 text-center border-end py-4">
                                 <div class="fw-bold" style="font-size: 3rem; white-space: nowrap;">
                                     <span class="text-success" id="report_total_score">0</span>
-                                    <span class="text-secondary"> / 100 점</span>
+                                    <span class="text-secondary"> / 120 점</span>
                                 </div>
                                 <small class="text-muted d-block mt-2">가동성 점수 + 안정성 점수 합산</small>
                             </div>
