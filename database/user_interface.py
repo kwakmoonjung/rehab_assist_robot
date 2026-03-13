@@ -3,7 +3,7 @@
 
 import os
 import json
-from datetime import datetime  # 🌟 [추가] 날짜 및 번호 매기기를 위해 필요
+from datetime import datetime
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String  
@@ -69,17 +69,60 @@ class RehabUserInterface(Node):
             10
         )
 
-        # 🌟 4. [업데이트] 플래너 분석 결과 구독
+        # 🌟 4. 플래너 분석 결과 구독
         self.planner_subscription = self.create_subscription(
             String,
-            '/exercise_planner/response',
+            '/recommended_routine',
             self.planner_response_callback,
             10
         )
         
-        self.get_logger().info("📡 토픽 구독 시작.")
+        # 🌟 5. [수정됨] AI 피드백 데이터 구독 (토픽명 변경: /session_ai_feedback)
+        self.ai_comment_subscription = self.create_subscription(
+            String,
+            '/session_ai_feedback',
+            self.ai_comment_callback,
+            10
+        )
+        
+        self.get_logger().info("📡 토픽 구독 시작 (PC1은 중계만 담당, AI 연산은 PC2에서 수행).")
 
-    # 🌟 [추가] 플래너 응답 수신 및 번호별 저장 콜백
+    # 🌟 [수정됨] AI 코멘트 수신 및 Firebase 저장 콜백
+    def ai_comment_callback(self, msg):
+        try:
+            # 텍스트 형태인지 JSON 형태인지 알 수 없으므로 안전하게 처리
+            feedback_text = msg.data.strip()
+            # 만약 JSON으로 들어온다면 {"feedback": "..."} 형태일 수 있으니 파싱 시도
+            try:
+                parsed = json.loads(feedback_text)
+                if isinstance(parsed, dict) and "feedback" in parsed:
+                    feedback_text = parsed["feedback"]
+            except:
+                pass # 순수 문자열이면 그냥 사용
+
+            self.get_logger().info(f"💬 AI 종합 처방 수신 완료: {feedback_text}")
+            
+            # 1. 라이브 세션에 즉시 업데이트 (웹 리포트 표출용 - 키 이름을 session_ai_feedback으로 통일)
+            live_ref = db.reference('live_current_session')
+            live_ref.update({"session_ai_feedback": feedback_text})
+            
+            # 2. 영구 저장소에 업데이트 (나중에 플래너가 조회할 수 있도록 저장)
+            if self.last_session_data:
+                exercise_type = self.last_session_data.get("exercise_type", "unknown_exercise")
+                raw_start_time = self.last_session_data.get("session_started_at", "default")
+                
+                if raw_start_time != "default":
+                    date_only = raw_start_time.split(" ")[0] 
+                    session_key = raw_start_time.replace("-", "").replace(":", "").replace(" ", "_")
+                    
+                    db_path = f'{self.current_user_id}/{date_only}/{exercise_type}/{session_key}'
+                    db.reference(db_path).update({"session_ai_feedback": feedback_text})
+                    self.get_logger().info(f"✅ AI 코멘트 영구 저장 완료: {db_path}")
+
+        except Exception as e:
+            self.get_logger().error(f"AI 코멘트 처리 중 에러: {e}")
+
+    # 플래너 응답 수신 및 번호별 저장 콜백
     def planner_response_callback(self, msg):
         try:
             planner_data = json.loads(msg.data)
@@ -172,7 +215,6 @@ class RehabUserInterface(Node):
             stability_score = max(0, 50 - ((arm_balance + body_not_straight) * 10))
 
         elif ex_type == 'bicep_curl':
-            # 🌟 [핵심 수정] 평균(avg) 대신 최대 수축 각도(min)를 최우선으로 가져옵니다!
             min_elbow = data.get("min_elbow_angle", data.get("avg_elbow_angle", 180))
             mobility_score = max(0, min(50, ((180 - min_elbow) / (180 - 50.0)) * 50))
             
