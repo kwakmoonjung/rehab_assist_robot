@@ -123,12 +123,29 @@ class RehabUserInterface(Node):
             self.get_logger().error(f"AI 코멘트 처리 중 에러: {e}")
 
     # 플래너 응답 수신 및 번호별 저장 콜백
+    # 플래너 응답 수신 및 번호별 저장 콜백
     def planner_response_callback(self, msg):
         try:
-            planner_data = json.loads(msg.data)
+            raw_text = msg.data.strip()
+            self.get_logger().info(f"📥 수신된 원본 플래너 데이터: {raw_text[:100]}...")
+            
+            # 1. 먼저 정상적인 JSON 파싱을 시도합니다.
+            try:
+                # 작은따옴표로 들어올 경우를 대비해 큰따옴표로 치환하는 방어 로직
+                clean_text = raw_text.replace("'", '"') if raw_text.startswith("{") else raw_text
+                planner_data = json.loads(clean_text)
+            except Exception as parse_error:
+                # 2. JSON 파싱에 실패하면 강제 저장 모드 가동
+                self.get_logger().warn(f"⚠️ JSON 파싱 실패. 강제 저장 모드 가동: {parse_error}")
+                planner_data = {
+                    "type": "recommended_routine",
+                    "analysis": {"summary": raw_text}
+                }
+            
             request_type = planner_data.get("type", "unknown")
             
-            if request_type in ["error", "unknown"]:
+            # 에러 메시지만 달랑 왔다면 스킵
+            if request_type in ["error", "unknown"] and "analysis" not in planner_data:
                 return
 
             # 오늘 날짜 (2026-03-13 형식)
@@ -138,16 +155,40 @@ class RehabUserInterface(Node):
             db_path = f"{self.current_user_id}/{date_only}/planner"
             planner_ref = db.reference(db_path)
             
-            # 기존 데이터 개수 확인하여 번호 부여 (planner_1, planner_2...)
+            # 🌟 [핵심 수정] 무조건 가장 큰 번호를 찾아서 +1 하도록 완벽하게 변경
             existing_planners = planner_ref.get()
-            next_idx = 1 if existing_planners is None else len(existing_planners) + 1
+            next_idx = 1
+            
+            if existing_planners and isinstance(existing_planners, dict):
+                indices = []
+                for key in existing_planners.keys():
+                    if key.startswith("planner_"):
+                        try:
+                            # "planner_4"에서 "4"만 추출하여 숫자로 변환
+                            idx = int(key.split("_")[1])
+                            indices.append(idx)
+                        except Exception:
+                            pass
+                
+                # 가장 큰 숫자(예: 4)를 찾았다면 그 다음 번호(5)로 지정
+                if indices:
+                    next_idx = max(indices) + 1
+            elif isinstance(existing_planners, list):
+                # 파이어베이스가 가끔 리스트로 반환할 때를 대비한 방어 코드
+                next_idx = len(existing_planners)
+                if existing_planners[0] is None: # 인덱스 0이 비어있는 경우 보정
+                    next_idx = len(existing_planners)
+                else:
+                    next_idx = len(existing_planners) + 1
+
             planner_key = f"planner_{next_idx}"
             
+            # 최종 저장
             planner_ref.child(planner_key).set(planner_data)
             self.get_logger().info(f"✅ 플래너 저장 완료: {db_path}/{planner_key}")
             
         except Exception as e:
-            self.get_logger().error(f"플래너 저장 중 에러: {e}")
+            self.get_logger().error(f"플래너 저장 중 치명적 에러: {e}")
 
     # 사용자 인식 콜백 함수
     def recognized_user_callback(self, msg):
