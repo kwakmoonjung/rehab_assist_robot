@@ -44,6 +44,7 @@ class RehabUserInterface(Node):
         self.is_analysis_completed = False
         self.last_session_data = None
         self.last_report_scores = None
+        self.current_user_id = "unknown_user" # [추가] 기본 사용자 설정
 
         # 🌟 1. 센서 데이터 구독 (기존)
         self.subscription = self.create_subscription(
@@ -60,12 +61,24 @@ class RehabUserInterface(Node):
             self.system_command_callback,
             10
         )
+
+        # 🌟 3. 사용자 인식 데이터 구독 (신규)
+        self.user_subscription = self.create_subscription(
+            String,
+            '/recognized_user',
+            self.recognized_user_callback,
+            10
+        )
         
         self.get_logger().info("📡 '/exercise_result' 및 '/system_command' 토픽 구독 시작...")
 
-    # 🌟 [신규] 시스템 명령어 처리 콜백 함수
- # 🌟 [수정됨] 시스템 명령어 처리 콜백 함수
-    # 🌟 [수정본] 시스템 명령어 처리 콜백 함수
+    # [추가] 사용자 인식 콜백 함수
+    def recognized_user_callback(self, msg):
+        user_id = msg.data.strip()
+        if user_id:
+            self.current_user_id = user_id
+
+    # 시스템 명령어 처리 콜백 함수
     def system_command_callback(self, msg):
         command = msg.data.strip()
         self.get_logger().info(f"시스템 명령어 수신: {command}")
@@ -197,8 +210,8 @@ class RehabUserInterface(Node):
             date_only = raw_start_time.split(" ")[0]
             session_key = raw_start_time.replace("-", "").replace(":", "").replace(" ", "_")
             
-            # 똑같이 3단 구조로 맞춰줍니다.
-            db_ref = db.reference(f'{date_only}/{exercise}/{session_key}')
+            # 4단 구조: 사용자 / 날짜 / 운동종류 / 세션고유키
+            db_ref = db.reference(f'{self.current_user_id}/{date_only}/{exercise}/{session_key}')
             db_ref.update({"ai_comment": ai_comment})
 
         except Exception as e:
@@ -218,8 +231,8 @@ class RehabUserInterface(Node):
             date_only = raw_start_time.split(" ")[0] # "2026-03-12 17:05:00"에서 날짜만 추출
             session_key = raw_start_time.replace("-", "").replace(":", "").replace(" ", "_")
             
-            # 3단 구조: 날짜 / 운동종류 / 세션고유키
-            db_path = f'{date_only}/{exercise_type}/{session_key}'
+            # 4단 구조: 사용자 / 날짜 / 운동종류 / 세션고유키
+            db_path = f'{self.current_user_id}/{date_only}/{exercise_type}/{session_key}'
             db_ref = db.reference(db_path)
             db_ref.set(data)
             

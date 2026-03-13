@@ -222,29 +222,29 @@ class ExercisePlanner(Node):
     # DB 전체 조회
     # ==========================================
     def get_all_sessions_from_db(self, user_id):
-        session_roots = [
-            "bicep_curl_sessions",
-            "shoulder_press_sessions",
-            "lateral_raise_sessions",
-        ]
-
         all_sessions = []
 
-        for root in session_roots:
-            try:
-                # [수정] 사용자별 경로로 접근 (구조에 따라 'users/{user_id}/{root}' 등 조정 필요)
-                ref = db.reference(f"users/{user_id}/{root}")
-                data = ref.get()
+        try:
+            # 해당 사용자의 모든 데이터 조회 (구조: user_id/date/exercise/session)
+            ref = db.reference(f"{user_id}")
+            user_data = ref.get()
 
-                if not data or not isinstance(data, dict):
-                    continue
+            if not user_data or not isinstance(user_data, dict):
+                return all_sessions
 
-                for _, session_data in data.items():
-                    if isinstance(session_data, dict):
-                        all_sessions.append(session_data)
+            # 날짜별 순회
+            for date_key, date_data in user_data.items():
+                if isinstance(date_data, dict):
+                    # 운동 종류별 순회
+                    for exercise_type, exercise_data in date_data.items():
+                        if isinstance(exercise_data, dict):
+                            # 세션별 순회
+                            for session_key, session_data in exercise_data.items():
+                                if isinstance(session_data, dict):
+                                    all_sessions.append(session_data)
 
-            except Exception as e:
-                self.get_logger().warn(f"{user_id}의 {root} 조회 실패: {e}")
+        except Exception as e:
+            self.get_logger().warn(f"{user_id} 데이터 조회 실패: {e}")
 
         all_sessions.sort(
             key=lambda x: x.get("session_started_at", ""),
