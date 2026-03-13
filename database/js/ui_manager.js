@@ -68,7 +68,6 @@ const UIManager = {
             statusEl.innerHTML = '<i class="fas fa-wrench"></i> 자세 교정 중';
             statusEl.className = "badge bg-warning text-dark p-2 fs-6 me-3"; 
         } else if (status === 'REPORT_EXERCISE') {
-            // 리포트 작성 중 상태 추가
             statusEl.innerHTML = '<i class="fas fa-file-signature"></i> 리포트 작성 중';
             statusEl.className = "badge bg-info text-dark p-2 fs-6 me-3";
         }
@@ -120,7 +119,7 @@ const UIManager = {
             document.getElementById('dot_press_right')?.classList.add('dot-active');
         } else if (exerciseValue === 'bicep_curl') {
             document.getElementById('chart_title').innerHTML = '<i class="fas fa-chart-line text-success"></i> 실시간 관절 궤적 (바벨 이두컬)';
-            document.getElementById('main_metric_label_left').innerText = "평균 팔꿈치 각도";
+            document.getElementById('main_metric_label_left').innerText = "최대 팔꿈치 각도";
             document.getElementById('main_metric_label_right').innerText = "평균 위팔(상완) 각도";
             document.getElementById('dot_curl_left')?.classList.add('dot-active');
             document.getElementById('dot_curl_right')?.classList.add('dot-active');
@@ -166,7 +165,8 @@ const UIManager = {
             }
         } else if (exType === 'bicep_curl') {
             if(document.getElementById('main_max_rom_left')) {
-                document.getElementById('main_max_rom_left').innerText = Math.round(data.realtime_joints?.left_shoulder || data.avg_elbow_angle || 0);
+                // 👇 메인 대시보드도 avg가 아닌 min_elbow_angle을 표시하도록 수정
+                document.getElementById('main_max_rom_left').innerText = Math.round(data.realtime_joints?.left_shoulder || data.min_elbow_angle || data.avg_elbow_angle || 0);
                 document.getElementById('main_max_rom_right').innerText = Math.round(data.realtime_joints?.right_shoulder || data.avg_upper_arm_angle || 0);
             }
         }
@@ -192,6 +192,27 @@ const UIManager = {
         }
     },
 
+    initChart: function() {
+        const ctx = document.getElementById('jointAngleChart').getContext('2d');
+        if (angleChart) angleChart.destroy(); 
+
+        angleChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [], 
+                datasets: [
+                    { label: '좌측', data: [], borderColor: '#198754', backgroundColor: 'rgba(25, 135, 84, 0.1)', borderWidth: 2, tension: 0.4, pointRadius: 0 },
+                    { label: '우측', data: [], borderColor: '#0d6efd', backgroundColor: 'rgba(13, 110, 253, 0.1)', borderWidth: 2, tension: 0.4, pointRadius: 0 }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: { y: { min: 0, max: 180, title: { display: true, text: 'Angle (Deg)' } }, x: { display: true } },
+                plugins: { legend: { position: 'top' } }, animation: false 
+            }
+        });
+    },
+
     generateGrowthReport: function() {
         const anatomyImg = document.getElementById('report_anatomy_img');
         const anatomyPlaceholder = document.getElementById('report_anatomy_placeholder');
@@ -202,7 +223,6 @@ const UIManager = {
             document.getElementById('report_table_body').innerHTML = '<tr><td colspan="4" class="py-3 text-muted">데이터를 분석 중입니다...</td></tr>';
             this.updateRadarChart(0, 0, 0);
 
-            // 🌟 데이터가 없으면 이미지와 점을 숨기고 placeholder를 띄움
             if(anatomyImg) anatomyImg.style.display = 'none';
             if(anatomyPlaceholder) anatomyPlaceholder.style.display = 'block';
             reportDots.forEach(id => { const el = document.getElementById(id); if(el) el.style.display = 'none'; });
@@ -210,7 +230,6 @@ const UIManager = {
             return;
         }
 
-        // 🌟 데이터가 들어왔으므로 placeholder 숨기고 이미지를 띄움
         if(anatomyImg) anatomyImg.style.display = 'inline-block';
         if(anatomyPlaceholder) anatomyPlaceholder.style.display = 'none';
         reportDots.forEach(id => { const el = document.getElementById(id); if(el) el.style.display = 'none'; });
@@ -219,23 +238,24 @@ const UIManager = {
         const exType = data.exercise_type || this.currentExercise;
         const scores = data.report_scores || {};
         
-        let mobilityScore = scores.mobility_score !== undefined ? scores.mobility_score : 0;
-        let stabilityScore = scores.stability_score !== undefined ? scores.stability_score : 50;
-        let postureAccuracy = scores.posture_accuracy !== undefined ? scores.posture_accuracy : (data.good_posture_ratio || data.performance_stats?.good_posture_ratio || 0);
+        let rawMobility = scores.mobility_score !== undefined ? scores.mobility_score : 0;
+        let rawStability = scores.stability_score !== undefined ? scores.stability_score : 50;
+        let rawAccuracy = scores.posture_accuracy !== undefined ? scores.posture_accuracy : (data.good_posture_ratio || data.performance_stats?.good_posture_ratio || 0);
         
+        let scaledMobility = Math.round((rawMobility / 50) * 40) || 0;
+        let scaledStability = Math.round((rawStability / 50) * 40) || 0;
+        let scaledAccuracy = Math.round((rawAccuracy / 100) * 40) || 0;
+        let totalScore120 = scaledMobility + scaledStability + scaledAccuracy;
+
         document.getElementById('report_date').innerText = new Date().toISOString().split('T')[0];
-        document.getElementById('report_total_score').innerText = mobilityScore + stabilityScore;
+        document.getElementById('report_total_score').innerText = totalScore120;
         
-        // 👇 [핵심 수정 부분] PC2에서 AI 분석 결과를 받아오는 로직
         const aiCommentBox = document.getElementById('report_ai_comment');
         if (data.ai_comment) {
-            // DB에 ai_comment 값이 들어왔다면 그대로 화면에 표출
             aiCommentBox.innerText = data.ai_comment;
         } else {
-            // 아직 값이 안 들어왔다면 (PC2 연산 대기 중) 사용자 친화적인 대기 메시지 표출
             aiCommentBox.innerText = "데이터 취합 완료! 시스템(PC2)에서 AI 분석 결과를 생성하고 있습니다. 잠시만 기다려주세요...";
         }
-        // 👆 -----------------------------------------------------------
 
         let tableHTML = '';
 
@@ -367,17 +387,19 @@ const UIManager = {
             const dotR = document.getElementById('report_dot_curl_right'); if(dotR) dotR.style.display = 'block';
 
             let warns = data.warning_counts || {};
-            
             let totalFrames = data.frame_count || 1; 
             let isolationPercent = (((warns.elbows_not_close_to_body || 0) / totalFrames) * 100).toFixed(1);
             let cheatPercent = (((warns.body_not_straight || 0) / totalFrames) * 100).toFixed(1);
             let balancePercent = (((warns.arm_balance_issue || 0) / totalFrames) * 100).toFixed(1);
+            
+            // 👇 [핵심 수정] DB에서 min_elbow_angle 값을 우선적으로 가져옵니다!
+            let peakFlexion = data.min_elbow_angle !== undefined ? data.min_elbow_angle : (data.avg_elbow_angle || 0);
 
             tableHTML += `
                 <tr>
                     <td rowspan="2" class="fw-bold bg-light">관절 가동성<br><small class="text-muted fw-normal">Mobility</small></td>
-                    <td class="text-start"><strong>평균 팔꿈치 수축 각도 (Elbow Flexion)</strong><br><small class="text-muted"></td>
-                    <td class="fw-bold text-primary">${Math.round(data.avg_elbow_angle || 0)}°</td>
+                    <td class="text-start"><strong>최대 팔꿈치 수축 각도 (Peak Flexion)</strong><br><small class="text-muted"></td>
+                    <td class="fw-bold text-primary">${Math.round(peakFlexion)}°</td>
                     <td>50° 이하 수축</td>
                 </tr>
                 <tr>
@@ -411,7 +433,10 @@ const UIManager = {
         }
 
         document.getElementById('report_table_body').innerHTML = tableHTML;
-        this.updateRadarChart(mobilityScore * 2, stabilityScore * 2, postureAccuracy);
+        
+        let radarMobility = (rawMobility / 50) * 100;
+        let radarStability = (rawStability / 50) * 100;
+        this.updateRadarChart(radarMobility, radarStability, rawAccuracy);
     },
 
     updateRadarChart: function(mob100, stab100, posture100) {

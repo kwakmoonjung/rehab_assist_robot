@@ -3,6 +3,7 @@
 
 import os
 import json
+from datetime import datetime  # 🌟 [추가] 날짜 및 번호 매기기를 위해 필요
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String  
@@ -67,8 +68,43 @@ class RehabUserInterface(Node):
             self.recognized_user_callback,
             10
         )
+
+        # 🌟 4. [업데이트] 플래너 분석 결과 구독
+        self.planner_subscription = self.create_subscription(
+            String,
+            '/exercise_planner/response',
+            self.planner_response_callback,
+            10
+        )
         
-        self.get_logger().info("📡 토픽 구독 시작 (PC1은 중계만 담당, AI 연산은 PC2에서 수행).")
+        self.get_logger().info("📡 토픽 구독 시작.")
+
+    # 🌟 [추가] 플래너 응답 수신 및 번호별 저장 콜백
+    def planner_response_callback(self, msg):
+        try:
+            planner_data = json.loads(msg.data)
+            request_type = planner_data.get("type", "unknown")
+            
+            if request_type in ["error", "unknown"]:
+                return
+
+            # 오늘 날짜 (2026-03-13 형식)
+            date_only = datetime.now().strftime("%Y-%m-%d")
+            
+            # 경로: user_id/date/planner
+            db_path = f"{self.current_user_id}/{date_only}/planner"
+            planner_ref = db.reference(db_path)
+            
+            # 기존 데이터 개수 확인하여 번호 부여 (planner_1, planner_2...)
+            existing_planners = planner_ref.get()
+            next_idx = 1 if existing_planners is None else len(existing_planners) + 1
+            planner_key = f"planner_{next_idx}"
+            
+            planner_ref.child(planner_key).set(planner_data)
+            self.get_logger().info(f"✅ 플래너 저장 완료: {db_path}/{planner_key}")
+            
+        except Exception as e:
+            self.get_logger().error(f"플래너 저장 중 에러: {e}")
 
     # 사용자 인식 콜백 함수
     def recognized_user_callback(self, msg):
@@ -103,7 +139,7 @@ class RehabUserInterface(Node):
             live_ref.update({"system_status": "CORRECTION"})
             self.get_logger().info("🛠️ 자세 교정 명령 수신.")
 
-    # 정량화 및 비대칭도 산출 로직 (기존 유지 - 데이터 가공용)
+    # 정량화 및 비대칭도 산출 로직
     def calculate_report_scores(self, data):
         ex_type = data.get("exercise_type", "unknown_exercise")
         mobility_score = 0
@@ -136,8 +172,9 @@ class RehabUserInterface(Node):
             stability_score = max(0, 50 - ((arm_balance + body_not_straight) * 10))
 
         elif ex_type == 'bicep_curl':
-            min_elbow = data.get("avg_elbow_angle", 180)
-            mobility_score = min(50, ((180 - min_elbow) / (180 - 50.0)) * 50)
+            # 🌟 [핵심 수정] 평균(avg) 대신 최대 수축 각도(min)를 최우선으로 가져옵니다!
+            min_elbow = data.get("min_elbow_angle", data.get("avg_elbow_angle", 180))
+            mobility_score = max(0, min(50, ((180 - min_elbow) / (180 - 50.0)) * 50))
             
             joints = data.get("realtime_joints", {})
             max_l = joints.get("left_shoulder", min_elbow)
@@ -147,8 +184,10 @@ class RehabUserInterface(Node):
             elbow_not_close = warns.get("elbows_not_close_to_body", 0)
             stability_score = max(0, 50 - (elbow_not_close * 10))
 
+        # 정자세 정확도
         posture_accuracy = data.get("good_posture_ratio", data.get("performance_stats", {}).get("good_posture_ratio", 80))
 
+        # 비대칭도
         asym_diff = abs(max_l - max_r)
         highest_rom = max(max_l, max_r)
         asym_ratio = round((asym_diff / highest_rom) * 100, 1) if highest_rom > 0 else 0.0
