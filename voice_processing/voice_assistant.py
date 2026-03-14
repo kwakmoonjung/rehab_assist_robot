@@ -197,7 +197,7 @@ class VoiceAssistant(Node):
         self.stt = STT(openai_api_key=openai_api_key)
         self.reporter = VoiceResponseGenerator(openai_api_key)
 
-        mic_config = MicConfig(chunk=12000, rate=48000, channels=1, record_seconds=5, fmt=pyaudio.paInt16, device_index=10, buffer_size=24000)
+        mic_config = MicConfig(chunk=12000, rate=48000, channels=1, record_seconds=3, fmt=pyaudio.paInt16, device_index=10, buffer_size=24000)
         self.mic_controller = MicController(config=mic_config)
         self.wakeup_word = WakeupWord(mic_config.buffer_size)
 
