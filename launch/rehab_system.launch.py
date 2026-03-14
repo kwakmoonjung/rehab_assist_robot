@@ -82,10 +82,10 @@ def generate_launch_description():
     return LaunchDescription([
         dsr_bringup_launch,
         dual_cam_launch,
-        pose_analyzer,
         posture_corrector,
-        exercise_logger,
+        # exercise_logger,
         voice_assistant,
         system_controller,
-        user_interface
+        pose_analyzer,
+        # user_interface
     ])

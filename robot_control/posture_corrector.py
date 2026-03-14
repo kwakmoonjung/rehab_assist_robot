@@ -21,7 +21,7 @@ from robot_control.onrobot import RG
 # --- 로봇 설정 상수 ---
 ROBOT_ID = "dsr01"
 ROBOT_MODEL = "m0609"
-VELOCITY, ACC = 300, 300 
+VELOCITY, ACC = 100, 100 
 GRIPPER_NAME = "rg2"
 TOOLCHARGER_IP = "192.168.1.1"
 TOOLCHARGER_PORT = "502"
