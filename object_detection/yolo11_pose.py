@@ -8,25 +8,28 @@ from ultralytics import YOLO
 import numpy as np
 import time
 import csv # 로그 저장을 위해 추가
+import os
 
-class YOLO11PoseNode(Node):
+class YOLO26PoseNode(Node):
     def __init__(self):
-        super().__init__('yolo11_pose_node')
+        super().__init__('yolo26_pose_node')
         self.bridge = CvBridge()
         self.create_subscription(Image, '/camera/camera/color/image_raw', self.image_callback, 10)
         self.angle_pub = self.create_publisher(Float32, '/patient_elbow_angle', 10)
         
         # 모델 로드
-        self.model = YOLO('yolo11n-pose.pt')
+        self.model = YOLO('yolo26s-pose.pt')
         
-        # [핵심] 로그 파일 설정
-        self.log_file_path = '/tmp/yolo11n_metrics.csv'
+        # [수정] 저장 경로를 스크립트가 위치한 object_detection 폴더로 변경
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        self.log_file_path = os.path.join(current_dir, 'yolo26s_metrics.csv')
+
         with open(self.log_file_path, mode='w', newline='') as file:
             writer = csv.writer(file)
             writer.writerow(["Timestamp", "FPS", "Angle"]) # 헤더 작성
 
         self.prev_time = time.time()
-        self.get_logger().info("🚀 YOLOv11n-Pose 분석 및 로그 기록 엔진 가동!")
+        self.get_logger().info("🚀 YOLOv26s-Pose 분석 및 로그 기록 엔진 가동!")
 
     def calculate_angle(self, a, b, c):
         # 관절 각도 계산 공식: 
@@ -65,13 +68,13 @@ class YOLO11PoseNode(Node):
 
         # 시각화
         annotated_frame = results.plot()
-        cv2.putText(annotated_frame, f"YOLO11 FPS: {fps:.1f}", (20, 50), 2, 1, (0, 255, 0), 2)
-        cv2.imshow("YOLOv11 Metrics Collector", annotated_frame)
+        cv2.putText(annotated_frame, f"YOLO26s FPS: {fps:.1f}", (20, 50), 2, 1, (0, 255, 0), 2)
+        cv2.imshow("YOLOv26s Metrics Collector", annotated_frame)
         cv2.waitKey(1)
 
 def main(args=None):
     rclpy.init(args=args)
-    node = YOLO11PoseNode()
+    node = YOLO26PoseNode()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

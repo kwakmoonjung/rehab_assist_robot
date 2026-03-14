@@ -1,77 +1,112 @@
 import pandas as pd
-import matplotlib.pyplot as plt
+import glob
 import os
-import matplotlib.font_manager as fm
 
 def main():
-    # --- [한글 폰트 설정] ---
-    font_path = '/usr/share/fonts/truetype/nanum/NanumBarunGothic.ttf'
-    if os.path.exists(font_path):
-        fm.fontManager.addfont(font_path)
-        plt.rc('font', family='NanumBarunGothic')
-    plt.rcParams['axes.unicode_minus'] = False
-
-    # [수정] 성적표 경로 리스트 (YOLO11n, YOLO11s만 남김)
-    paths = {
-        "YOLO11n": "/tmp/yolo11n_metrics.csv",
-        "YOLO11s": "/tmp/yolo11s_metrics.csv"
-    }
-
-    # 데이터 로드 및 정규화
-    data = {}
-    for name, path in paths.items():
-        if os.path.exists(path):
-            df = pd.read_csv(path)
-            # 시간 축 정규화 (0초부터 시작)
-            df['Time_s'] = df['Timestamp'] - df['Timestamp'].iloc[0]
-            data[name] = df
-        else:
-            print(f"{name} 데이터가 없습니다. ({path})")
-
-    if not data:
-        print("비교할 데이터가 없습니다.")
+    # 1. 현재 폴더 내의 모든 metrics.csv 파일 탐색
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    csv_files = glob.glob(os.path.join(current_dir, '*_metrics.csv'))
+    
+    if not csv_files:
+        print("비교할 데이터(_metrics.csv)가 존재하지 않습니다.")
         return
 
-    plt.style.use('ggplot')
-    fig, axs = plt.subplots(3, 1, figsize=(12, 16))
+    results = []
     
-    # [수정] 그래프 제목 변경
-    fig.suptitle('AI Pose Estimation Benchmark: YOLO11n vs YOLO11s', fontsize=16, fontweight='bold')
+    for file in csv_files:
+        model_name = os.path.basename(file).replace('_metrics.csv', '').upper()
+        try:
+            df = pd.read_csv(file)
+            if df.empty:
+                continue
+                
+            # [지표 1] Real-time Performance (실시간성 / Avg FPS)
+            avg_fps = df['FPS'].mean()
+            
+            # [지표 2] Elbow Angle Tracking (정확도 및 가동범위 / Min ~ Max Angle)
+            min_angle = df['Angle'].min()
+            max_angle = df['Angle'].max()
+            
+            # [지표 3] Signal Stability (각도 떨림 / Jitter)
+            jitter = df['Angle'].diff().abs().mean()
+            
+            # 추적 실패 여부 판별 (관절 인식을 놓쳐 0도 근처로 튀었는지 확인)
+            is_failed = True if min_angle < 10 else False
+            
+            results.append({
+                '모델명': model_name,
+                'Elbow Angle Tracking (Min~Max, °)': f"{min_angle:.1f} ~ {max_angle:.1f}",
+                'Real-time Performance (Avg FPS)': round(avg_fps, 1),
+                'Signal Stability (Jitter, °)': round(jitter, 2),
+                '_min_angle': min_angle,
+                '_fps': avg_fps,
+                '_jitter': jitter,
+                '_is_failed': is_failed
+            })
+        except Exception as e:
+            print(f"{model_name} 파일 분석 중 에러 발생: {e}")
 
-    # [수정] 색상 지정 (YOLO11n, YOLO11s만 남김)
-    colors = {"YOLO11n": "green", "YOLO11s": "magenta"}
+    if not results:
+        return
 
-    # [1] Elbow Angle Tracking
-    for name, df in data.items():
-        # [수정] 선 굵기 동일하게 설정
-        lw = 2.0 
-        axs[0].plot(df['Time_s'], df['Angle'], label=name, color=colors[name], alpha=0.8, linewidth=lw)
-    axs[0].axhline(y=90, color='black', linestyle='--', label='Target (90°)')
-    axs[0].set_title("1. Elbow Angle Tracking (정확도 및 가동 범위)")
-    axs[0].set_ylabel("Angle (deg)")
-    axs[0].set_ylim(0, 190)
-    axs[0].legend(loc='upper right')
+    df_summary = pd.DataFrame(results)
+    
+    # 2. 출력용 표 정렬 (Jitter가 낮고 FPS가 높은 순)
+    df_summary = df_summary.sort_values(by=['_jitter', '_fps'], ascending=[True, False]).reset_index(drop=True)
+    
+    display_cols = ['모델명', 'Elbow Angle Tracking (Min~Max, °)', 'Real-time Performance (Avg FPS)', 'Signal Stability (Jitter, °)']
+    df_display = df_summary[display_cols].copy()
+    
+    # 터미널 표 출력
+    print("\n" + "="*85)
+    print(" 📊 AI Pose Estimation 3대 핵심 지표 종합 비교표")
+    print("="*85)
+    
+    # tabulate 패키지가 없을 경우를 대비해 예외 처리 추가
+    try:
+        print(df_display.to_markdown(index=False))
+    except ImportError:
+        print(df_display.to_string(index=False))
+        
+    print("="*85 + "\n")
 
-    # [2] Real-time Performance
-    for name, df in data.items():
-        axs[1].plot(df['Time_s'], df['FPS'], label=f"{name} (Avg: {df['FPS'].mean():.1f})", color=colors[name], alpha=0.7)
-    axs[1].set_title("2. Real-time Performance (실시간성 / FPS)")
-    axs[1].set_ylabel("FPS")
-    axs[1].legend(loc='lower right')
+    # [추가] 비교 결과 표를 CSV 파일로 저장
+    save_path = os.path.join(current_dir, 'model_table.csv')
+    df_display.to_csv(save_path, index=False, encoding='utf-8-sig')
+    print(f"✅ 비교 결과 표가 저장되었습니다: {save_path}\n")
 
-    # [3] Jitter Analysis 
-    for name, df in data.items():
-        # 각도의 변화량(Jitter) 계산
-        jitter = df['Angle'].diff().abs().fillna(0)
-        axs[2].plot(df['Time_s'], jitter, label=f"{name} Jitter (Avg: {jitter.mean():.2f}°)", color=colors[name], alpha=0.5)
-    axs[2].set_title("3. Signal Stability (각도 떨림 / Jitter)")
-    axs[2].set_ylabel("Jitter (deg)")
-    axs[2].set_xlabel("Time (s)")
-    axs[2].legend(loc='upper right')
-
-    plt.tight_layout()
-    plt.subplots_adjust(top=0.92)
-    plt.show()
+    # --- 3. 최종 모델 자동 선택 알고리즘 ---
+    print("🏆 [알고리즘 기반 최종 모델 선정 결과]")
+    
+    # Step 1. 치명적 오류 필터링 (가동범위 추적 실패: Min Angle < 10도 제거)
+    valid_models = df_summary[~df_summary['_is_failed']].copy()
+    
+    if valid_models.empty:
+        print("⚠️ 모든 모델이 추적에 실패한 구간이 있습니다. 가장 Jitter가 낮은 모델을 선택합니다.")
+        best_model = df_summary.loc[df_summary['_jitter'].idxmin()]
+    else:
+        # Step 2. 실시간성 필터링 (로봇 제어 마지노선: 15 FPS 이상)
+        realtime_models = valid_models[valid_models['_fps'] >= 15.0].copy()
+        
+        if realtime_models.empty:
+            print("⚠️ 실시간 제어 기준(15 FPS)을 만족하는 안정적인 모델이 없습니다. 가동범위가 정상인 것 중 가장 빠른 모델을 선택합니다.")
+            best_model = valid_models.loc[valid_models['_fps'].idxmax()]
+        else:
+            # Step 3. 최종 선택: 기준을 통과한 엘리트 모델 중 가장 안정적인(Jitter가 제일 낮은) 모델 선택
+            best_model = realtime_models.loc[realtime_models['_jitter'].idxmin()]
+    
+    best_name = best_model['모델명']
+    print(f"👉 시스템이 분석한 재활 로봇 제어 최적의 모델은 **{best_name}** 입니다!\n")
+    print("💡 [선정 이유 요약]")
+    
+    if best_model['_is_failed']:
+        print("- 완벽한 모델은 없으나, 후보군 중 신호 떨림이 가장 적어 제어 오작동 확률이 가장 낮습니다.")
+    else:
+        print("1. Elbow Angle Tracking: 치명적인 인식 실패(관절 각도 0도 수렴 현상)가 전혀 발생하지 않았습니다.")
+        print(f"2. Real-time Performance: 초당 {best_model['_fps']:.1f} 프레임으로, 로봇과 실시간 연동 제어에 충분한 속도를 보장합니다.")
+        print(f"3. Signal Stability: 후보군 중 각도 떨림(Jitter: {best_model['_jitter']:.2f}°)이 가장 낮아, 환자에게 부드러운 로봇 모터 구동을 제공할 수 있습니다.")
+        
+    print("="*85 + "\n")
 
 if __name__ == '__main__':
     main()

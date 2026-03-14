@@ -1,0 +1,8 @@
+﻿모델명,"Elbow Angle Tracking (Min~Max, °)",Real-time Performance (Avg FPS),"Signal Stability (Jitter, °)"
+YOLO11N,64.6 ~ 177.3,22.8,1.66
+MEDIAPIPE,82.9 ~ 178.6,24.7,2.13
+YOLO26N,0.0 ~ 176.8,22.8,2.26
+YOLO26S,58.8 ~ 176.0,12.1,2.66
+YOLO11S,61.1 ~ 176.2,12.1,2.83
+YOLO11L,61.6 ~ 174.9,4.6,6.69
+MOVENET,0.0 ~ 174.7,11.4,15.58

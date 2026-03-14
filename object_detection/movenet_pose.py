@@ -1,125 +1,108 @@
-import sys
 import os
 import time
 import csv
-import psutil
+import numpy as np
+import cv2
+
+# [추가] GPU 가속 라이브러리(cuDNN) 충돌 방지를 위해 CPU 사용 강제 설정
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+import tensorflow as tf
+import tensorflow_hub as hub
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 from std_msgs.msg import Float32
 from cv_bridge import CvBridge
-import cv2
-import numpy as np
-import tensorflow as tf
 
-class MoveNetNode(Node):
+class MoveNetPoseNode(Node):
     def __init__(self):
-        super().__init__('movenet_pose')
+        super().__init__('movenet_pose_node')
         self.bridge = CvBridge()
+        
+        self.get_logger().info("⏳ MoveNet 모델 로드 중...")
+        # [수정] 모델 로드 방식 유지
+        self.module = hub.load("https://tfhub.dev/google/movenet/singlepose/lightning/4")
+        self.model = self.module.signatures['serving_default']
+        
         self.create_subscription(Image, '/camera/camera/color/image_raw', self.image_callback, 10)
         self.angle_pub = self.create_publisher(Float32, '/patient_elbow_angle', 10)
         
-        # MoveNet 모델 로드 (다운로드 받은 경로)
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        model_path = '/home/rokey/cobot_ws/src/cobot2_ws/rehab_assist_robot/object_detection/movenet_lightning.tflite'
-        
-        self.interpreter = tf.lite.Interpreter(model_path=model_path)
-        self.interpreter.allocate_tensors()
-        self.input_details = self.interpreter.get_input_details()
-        self.output_details = self.interpreter.get_output_details()
+        self.log_file_path = os.path.join(current_dir, 'movenet_metrics.csv')
 
-        # 로깅 관련 초기화
-        self.prev_time = time.time()
-        self.prev_angle = None
-        self.log_file_path = '/tmp/movenet_metrics.csv'
-        
         with open(self.log_file_path, mode='w', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow(["Timestamp", "FPS", "Inference_ms", "Angle", "Jitter", "CPU_Usage"])
+            writer.writerow(["Timestamp", "FPS", "Angle"])
 
-        self.get_logger().info("⚡ [MoveNet] 초고속 로깅 노드가 시작되었습니다.")
+        self.prev_time = time.time()
+        self.get_logger().info("🚀 MoveNet-Pose 분석 및 로그 기록 엔진 가동 완료!")
 
     def calculate_angle(self, a, b, c):
+        # 관절 각도 계산 공식: 
+        # $$angle = \arccos\left(\frac{\vec{BA} \cdot \vec{BC}}{|\vec{BA}| |\vec{BC}|}\right)$$
         a, b, c = np.array(a), np.array(b), np.array(c)
         radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
         angle = np.abs(radians * 180.0 / np.pi)
-        if angle > 180.0:
-            angle = 360 - angle
-        return angle
+        return 360 - angle if angle > 180.0 else angle
 
     def image_callback(self, msg):
         try:
-            inf_start = time.time()
-            image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
-            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+            h, w, _ = frame.shape
             
-            # MoveNet은 192x192 사이즈의 이미지를 입력으로 받습니다
-            input_image = tf.image.resize_with_pad(np.expand_dims(image_rgb, axis=0), 192, 192)
-            input_image = tf.cast(input_image, dtype=tf.float32)
-
-            # 추론 실행
-            self.interpreter.set_tensor(self.input_details[0]['index'], input_image.numpy())
-            self.interpreter.invoke()
-            keypoints_with_scores = self.interpreter.get_tensor(self.output_details[0]['index'])
+            # MoveNet 추론 전처리
+            input_image = cv2.resize(frame, (192, 192))
+            input_image = tf.expand_dims(input_image, axis=0)
+            input_image = tf.cast(input_image, dtype=tf.int32)
+            
+            # [수정] TypeError 방지를 위해 키워드 인자(input=) 명시적 사용
+            outputs = self.model(input=input_image)
+            keypoints = outputs['output_0'].numpy()[0, 0, :, :]
 
             current_angle = 0.0
-            jitter = 0.0
-            
-            h, w, _ = image.shape
-            keypoints = keypoints_with_scores[0][0] # 17개의 관절 [y, x, score]
+            # Index: 6: R-Shoulder, 8: R-Elbow, 10: R-Wrist
+            ry, rx, rs = keypoints[6]
+            ey, ex, es = keypoints[8]
+            wy, wx, ws = keypoints[10]
 
-            # 오른쪽 어깨(5), 오른쪽 팔꿈치(7), 오른쪽 손목(9) 추출 (score가 0.3 이상일 때만)
-            if keypoints[5][2] > 0.3 and keypoints[7][2] > 0.3 and keypoints[9][2] > 0.3:
-                # 좌표가 정규화되어 있으므로 해상도를 곱해줍니다 (y, x 순서 주의)
-                shoulder = [keypoints[5][1], keypoints[5][0]]
-                elbow = [keypoints[7][1], keypoints[7][0]]
-                wrist = [keypoints[9][1], keypoints[9][0]]
+            if all(score > 0.2 for score in [rs, es, ws]):
+                shoulder = [rx * w, ry * h]
+                elbow = [ex * w, ey * h]
+                wrist = [wx * w, wy * h]
                 
                 current_angle = self.calculate_angle(shoulder, elbow, wrist)
+                self.angle_pub.publish(Float32(data=float(current_angle)))
                 
-                angle_msg = Float32()
-                angle_msg.data = float(current_angle)
-                self.angle_pub.publish(angle_msg)
-                
-                if self.prev_angle is not None:
-                    jitter = abs(current_angle - self.prev_angle)
-                self.prev_angle = current_angle
+                for pt in [shoulder, elbow, wrist]:
+                    cv2.circle(frame, (int(pt[0]), int(pt[1])), 5, (0, 255, 0), -1)
 
-                # 시각화
-                shoulder_px = (int(shoulder[0]*w), int(shoulder[1]*h))
-                elbow_px = (int(elbow[0]*w), int(elbow[1]*h))
-                wrist_px = (int(wrist[0]*w), int(wrist[1]*h))
-
-                cv2.line(image, shoulder_px, elbow_px, (0, 255, 255), 3) # 노란색 선
-                cv2.line(image, elbow_px, wrist_px, (0, 255, 255), 3)
-                cv2.circle(image, elbow_px, 10, (0, 255, 255), -1)
-
-            # 성능 지표 계산
             inf_end = time.time()
-            inf_time_ms = (inf_end - inf_start) * 1000.0
             fps = 1.0 / (inf_end - self.prev_time)
             self.prev_time = inf_end
-            cpu_usage = psutil.Process(os.getpid()).cpu_percent()
 
-            # CSV 기록
             with open(self.log_file_path, mode='a', newline='') as file:
                 writer = csv.writer(file)
-                writer.writerow([f"{inf_end:.3f}", f"{fps:.1f}", f"{inf_time_ms:.1f}", 
-                                 f"{current_angle:.2f}", f"{jitter:.3f}", f"{cpu_usage:.1f}"])
+                writer.writerow([f"{inf_end:.3f}", f"{fps:.1f}", f"{current_angle:.2f}"])
 
-            display_image = cv2.resize(image, (0, 0), fx=0.5, fy=0.5)
-            cv2.imshow('MoveNet Evaluation', display_image)
+            cv2.putText(frame, f"MoveNet FPS: {fps:.1f}", (20, 50), 2, 1, (0, 255, 0), 2)
+            cv2.imshow("MoveNet Metrics Collector", frame)
             cv2.waitKey(1)
-                
+            
         except Exception as e:
-            self.get_logger().error(f"Error: {e}")
+            self.get_logger().error(f"이미지 처리 중 오류 발생: {e}")
 
 def main(args=None):
     rclpy.init(args=args)
-    node = MoveNetNode()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    node = MoveNetPoseNode()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
