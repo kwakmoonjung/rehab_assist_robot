@@ -390,6 +390,10 @@ class PostureCorrector(Node):
                 time.sleep(3.0)
                 self.move_to_init_pos(force=True)
 
+                msg = String()
+                msg.data = "비상 정지로 자세 교정을 종료하고 원위치로 복귀했습니다."
+                self.correction_pub.publish(msg)
+
             elif g_is_recovery_triggered:
                 self.get_logger().info("복구 모드: 3초 대기 후 초기 위치로 복귀합니다.")
                 time.sleep(3.0)

@@ -437,6 +437,7 @@ class VoiceAssistant(Node):
 
                 if any(kw in output_message for kw in ["멈춰", "정지", "그만", "잠깐"]):
                     self.emg_pub.publish(Bool(data=True))
+                    self.is_correction_mode = False
                     self.get_logger().warn("[긴급 정지] /emergency_stop 발행")
 
                     import threading
@@ -486,11 +487,17 @@ class VoiceAssistant(Node):
                     if not self.current_user_id:
                         self.get_logger().warn("자세 교정 전 사용자 얼굴 인식 필요")
                         import threading
-                        threading.Thread(target=self.reporter.speak, args=("먼저 카메라를 바라봐 주세요. 사용자를 확인한 뒤 자세 교정을 시작할게요.",), daemon=True).start()
+                        threading.Thread(
+                            target=self.reporter.speak,
+                            args=("먼저 카메라를 바라봐 주세요. 사용자를 확인한 뒤 자세 교정을 시작할게요.",),
+                            daemon=True
+                        ).start()
                         continue
 
-                    import threading
-                    threading.Thread(target=self.reporter.speak, args=(f"{self.current_user_id}님 확인되었습니다. 네, 로봇을 이동시켜 자세를 교정하겠습니다. 가만히 계셔주세요.",), daemon=True).start()
+                    # 안내 멘트를 먼저 끝까지 재생
+                    self.reporter.speak(
+                        f"{self.current_user_id}님 확인되었습니다. 네, 로봇을 이동시켜 자세를 교정하겠습니다. 가만히 계셔주세요."
+                    )
 
                     cmd_msg.data = "CORRECTION"
                     self.cmd_pub.publish(cmd_msg)
