@@ -74,6 +74,12 @@ const UIManager = {
         } else if (status === 'REPORT_EXERCISE') {
             statusEl.innerHTML = '<i class="fas fa-file-signature"></i> 리포트 작성 중';
             statusEl.className = "badge bg-info text-dark p-2 fs-6 me-3";
+            
+        // 👇 이 부분을 추가해 주세요! 👇
+        } else if (status === 'EMERGENCY_STOP') {
+            statusEl.innerHTML = '<i class="fas fa-exclamation-triangle fa-beat"></i> 시스템 비상 정지';
+            statusEl.className = "badge bg-danger text-white p-2 fs-6 me-3 shadow";
+            this.stopSessionTimer(); // 타이머도 멈추게 함
         }
     },
 
@@ -144,7 +150,7 @@ const UIManager = {
                 leftBox.classList.remove('pb-0');
             }
 
-            if(chartTitle) chartTitle.innerHTML = '<i class="fas fa-chart-line text-info"></i> 실시간 관절 궤적 (사레레)';
+            if(chartTitle) chartTitle.innerHTML = '<i class="fas fa-chart-line text-info"></i> 실시간 관절 궤적 (사이드 레터럴 레이즈)';
             if(leftLabel) leftLabel.innerText = "좌측 최고 도달 각도";
             if(rightLabel) rightLabel.innerText = "우측 최고 도달 각도";
             document.getElementById('dot_lat_left')?.classList.add('dot-active');
@@ -201,7 +207,7 @@ const UIManager = {
 
         const exType = data.exercise_type;
         if (exType && exType !== this.currentExercise) {
-            let exName = exType === 'lateral_raise' ? "사레레" : exType === 'shoulder_press' ? "숄더 프레스" : "바벨 이두컬";
+            let exName = exType === 'lateral_raise' ? "사이드 레터럴 레이즈" : exType === 'shoulder_press' ? "숄더 프레스" : "바벨 이두컬";
             this.startExerciseUI(exType, exName);
         }
 
@@ -346,7 +352,7 @@ const UIManager = {
 
         if (exType === 'lateral_raise') {
             const titleEl = document.getElementById('report_exercise_title');
-            if(titleEl) titleEl.innerText = "3. 세부 지표 및 타겟 부위 분석 (사레레)";
+            if(titleEl) titleEl.innerText = "3. 세부 지표 및 타겟 부위 분석 (사이드 레터럴 레이즈)";
             
             if(anatomyImg) anatomyImg.src = 'images/body_outline_shoulder.png';
             const dotL = document.getElementById('report_dot_lat_left'); if(dotL) dotL.style.display = 'block';
@@ -404,19 +410,14 @@ const UIManager = {
                     <td class="fw-bold text-danger align-middle">반동: ${leanBackPct}%<br>불균형: ${armBalancePct}%</td>
                     <td class="align-middle">5% 미만</td>
                 </tr>
-                <tr>
-                    <td rowspan="2" class="fw-bold bg-light align-middle" style="border-bottom: 2px solid #858796;">운동 추적률<br><small class="text-muted fw-normal">Tracking</small></td>
+                <tr style="border-bottom: 2px solid #858796;">
+                    <td class="fw-bold bg-light align-middle">운동 추적률<br><small class="text-muted fw-normal">Tracking</small></td>
                     <td class="text-start align-middle"><strong>정자세 비율</strong><br><small class="text-muted">(Good Posture Ratio)</small></td>
                     <td class="fw-bold text-success align-middle">${pStats.good_posture_ratio || 0}%</td>
                     <td class="align-middle">80% 이상</td>
                 </tr>
-                <tr style="border-bottom: 2px solid #858796;">
-                    <td class="text-start align-middle"><strong>추적 세션 데이터</strong><br><small class="text-muted">(Session Data)</small></td>
-                    <td class="fw-bold text-secondary align-middle">${data.frame_count || 0} 프레임<br>${data.session_duration_sec || 0}초</td>
-                    <td class="align-middle">-</td>
-                </tr>
             `;
-
+            
         } else if (exType === 'shoulder_press') {
             const titleEl = document.getElementById('report_exercise_title');
             if(titleEl) titleEl.innerText = "3. 세부 지표 및 타겟 부위 분석 (숄더 프레스)";

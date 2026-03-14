@@ -48,9 +48,6 @@
             <button id="btn_show_report" class="btn btn-success btn-lg me-2 shadow-sm" data-bs-toggle="modal" data-bs-target="#reportModal">
                 <i class="fas fa-file-medical-alt"></i> 맞춤형 운동 리포트
             </button>
-            <button id="btn_toggle_admin" class="btn btn-outline-secondary" title="엔지니어링 설정">
-                <i class="fas fa-cog"></i>
-            </button>
         </div>
     </div>
 
@@ -66,7 +63,7 @@
                             <span class="text-muted fw-bold d-block" style="font-size: 0.9rem;">현재 인식된 운동</span>
                             <select id="exercise_selector" class="form-select fw-bold text-primary shadow-sm mt-1" style="border: 2px solid #1E90FF; font-size: 1.3rem; border-radius: 8px; background-color: white; pointer-events: none; width: auto;">
                                 <option value="" selected disabled>음성 명령 대기 중...</option>
-                                <option value="lateral_raise">사레레 (Lateral Raise)</option>
+                                <option value="lateral_raise">사이드 레터럴 레이즈 (Lateral Raise)</option>
                                 <option value="shoulder_press">숄더 프레스 (Shoulder Press)</option>
                                 <option value="bicep_curl">바벨 이두컬 (Bicep Curl)</option>
                             </select>
@@ -85,7 +82,7 @@
             <div class="card h-100 bg-dark text-white shadow-sm border-0">
                 <div class="card-header py-1 fs-7 bg-secondary"><i class="fas fa-video"></i> 정면 (FIXED CAM)</div>
                 <div class="card-body p-0 d-flex align-items-center overflow-hidden" style="min-height: 200px; background-color: #1a1a1a;">
-                    <div class="text-white w-100 text-center fw-bold">영상 전송 중단됨 (디버깅 모드)</div>
+                    <div class="text-white w-100 text-center fw-bold"></div>
                 </div>
             </div>
         </div>
@@ -93,7 +90,7 @@
             <div class="card h-100 bg-dark text-white shadow-sm border-0">
                 <div class="card-header py-1 fs-7 bg-secondary"><i class="fas fa-video"></i> 측면 (ROBOT CAM)</div>
                 <div class="card-body p-0 d-flex align-items-center overflow-hidden" style="min-height: 200px; background-color: #1a1a1a;">
-                    <div class="text-white w-100 text-center fw-bold">영상 전송 중단됨 (디버깅 모드)</div>
+                    <div class="text-white w-100 text-center fw-bold"></div>
                 </div>
             </div>
         </div>
@@ -179,7 +176,7 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-4">
-                <div id="printable_report" class="bg-white mx-auto shadow-sm p-5" style="max-width: 210mm; min-height: 297mm; color: #333;">
+                <div id="printable_report" class="bg-white mx-auto shadow-sm px-5 pt-5 pb-2" style="max-width: 210mm; min-height: 297mm; color: #333;">
                     
                     <div class="border-bottom border-3 border-dark pb-3 mb-4 d-flex justify-content-between align-items-end">
                         <div>
@@ -318,7 +315,7 @@
 
                             <div class="col-12">
                                 <div class="card shadow-sm border-0 bg-light">
-                                    <div class="card-header bg-secondary text-white py-1 fw-bold fs-7"><i class="fas fa-child"></i> 사레레 (Lateral Raise)</div>
+                                    <div class="card-header bg-secondary text-white py-1 fw-bold fs-7"><i class="fas fa-child"></i> 사이드 레터럴 레이즈 (Lateral Raise)</div>
                                     <div class="card-body p-2">
                                         <ul class="mb-0 small text-muted" style="line-height: 1.6;">
                                             <li><strong class="text-dark">최대 도달 각도 (Max ROM):</strong> 로봇 보조를 포함하여 어깨를 양옆으로 들어올린 최대 외전 각도입니다. (목표: 80°~90°)</li>
@@ -370,15 +367,15 @@
                                 </tr>
                                 <tr>
                                     <td class="py-1"><span class="param-code" style="font-size: 0.7rem;">arms_too_high</span></td>
-                                    <td class="py-1"><b>[사레레]</b> 팔을 어깨선(90°) 이상으로 과도하게 높이 들어 올려 어깨 충돌 위험이 발생한 횟수입니다.</td>
+                                    <td class="py-1"><b>[사이드 레터럴 레이즈]</b> 팔을 어깨선(90°) 이상으로 과도하게 높이 들어 올려 어깨 충돌 위험이 발생한 횟수입니다.</td>
                                 </tr>
                                 <tr>
                                     <td class="py-1"><span class="param-code" style="font-size: 0.7rem;">chest_down</span></td>
-                                    <td class="py-1"><b>[사레레]</b> 운동 중 가슴이 말리거나 등이 굽어 자세가 무너진 횟수입니다.</td>
+                                    <td class="py-1"><b>[사이드 레터럴 레이즈]</b> 운동 중 가슴이 말리거나 등이 굽어 자세가 무너진 횟수입니다.</td>
                                 </tr>
                                 <tr>
                                     <td class="py-1"><span class="param-code" style="font-size: 0.7rem;">lean_back_momentum</span></td>
-                                    <td class="py-1"><b>[사레레]</b> 무게를 들기 위해 상체를 뒤로 젖히며 허리 반동(Cheat)을 사용한 횟수입니다.</td>
+                                    <td class="py-1"><b>[사이드 레터럴 레이즈]</b> 무게를 들기 위해 상체를 뒤로 젖히며 허리 반동(Cheat)을 사용한 횟수입니다.</td>
                                 </tr>
                                 <tr>
                                     <td class="py-1"><span class="param-code" style="font-size: 0.7rem;">elbows_not_close_to_body</span></td>
@@ -559,7 +556,7 @@
         const element = document.getElementById('printable_report');
         const dateStr = new Date().toISOString().split('T')[0];
         const opt = {
-            margin: [10, 0, 10, 0],
+            margin: [10, 0, 5, 0], // 하단 마진을 5mm로 줄여서 막장에 숨통을 틔워줍니다.
             filename: `SilverHealthClub_Report_${dateStr}.pdf`,
             image: { type: 'jpeg', quality: 0.98 },
             html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },

@@ -77,36 +77,61 @@ class RehabUserInterface(Node):
             10
         )
         
-        # 🌟 5. [수정됨] AI 피드백 데이터 구독 (토픽명 변경: /session_ai_feedback)
+        # 🌟 5. AI 피드백 데이터 구독
         self.ai_comment_subscription = self.create_subscription(
             String,
             '/session_ai_feedback',
             self.ai_comment_callback,
             10
         )
+
+        # 🌟 6. [신규 추가] 비상 정지 상태 구독
+        self.emergency_subscription = self.create_subscription(
+            String,
+            '/emergency_stop',
+            self.emergency_stop_callback,
+            10
+        )
         
         self.get_logger().info("📡 토픽 구독 시작 (PC1은 중계만 담당, AI 연산은 PC2에서 수행).")
 
-    # 🌟 [수정됨] AI 코멘트 수신 및 Firebase 저장 콜백
+    # 🌟 [신규 추가] 비상 정지 수신 콜백 함수
+    # 🌟 [신규 추가] 비상 정지 수신 콜백 함수
+    def emergency_stop_callback(self, msg):
+        try:
+            emergency_cmd = msg.data.strip()
+            # 1. 신호 수신 로그 출력
+            self.get_logger().info(f"🚨 비상 정지 명령어 수신: {emergency_cmd}")
+            
+            # 파이어베이스 실시간 세션에 즉각적으로 비상 상태 반영
+            live_ref = db.reference('live_current_session')
+            live_ref.update({
+                "system_status": "EMERGENCY_STOP",
+                "last_feedback": "🚨 비상 상황 발생! 로봇 작동이 중단되었습니다."
+            })
+            
+            # 2. 파이어베이스 업데이트 완료 로그 출력
+            self.get_logger().info("🛑 Firebase 상태 업데이트 완료: EMERGENCY_STOP")
+            
+        except Exception as e:
+            self.get_logger().error(f"비상 정지 신호 처리 중 에러: {e}")
+
+    # AI 코멘트 수신 및 Firebase 저장 콜백
     def ai_comment_callback(self, msg):
         try:
-            # 텍스트 형태인지 JSON 형태인지 알 수 없으므로 안전하게 처리
             feedback_text = msg.data.strip()
-            # 만약 JSON으로 들어온다면 {"feedback": "..."} 형태일 수 있으니 파싱 시도
             try:
                 parsed = json.loads(feedback_text)
                 if isinstance(parsed, dict) and "feedback" in parsed:
                     feedback_text = parsed["feedback"]
             except:
-                pass # 순수 문자열이면 그냥 사용
+                pass 
 
             self.get_logger().info(f"💬 AI 종합 처방 수신 완료: {feedback_text}")
             
-            # 1. 라이브 세션에 즉시 업데이트 (웹 리포트 표출용 - 키 이름을 session_ai_feedback으로 통일)
             live_ref = db.reference('live_current_session')
             live_ref.update({"session_ai_feedback": feedback_text})
             
-            # 2. 영구 저장소에 업데이트 (나중에 플래너가 조회할 수 있도록 저장)
             if self.last_session_data:
                 exercise_type = self.last_session_data.get("exercise_type", "unknown_exercise")
                 raw_start_time = self.last_session_data.get("session_started_at", "default")
@@ -123,19 +148,15 @@ class RehabUserInterface(Node):
             self.get_logger().error(f"AI 코멘트 처리 중 에러: {e}")
 
     # 플래너 응답 수신 및 번호별 저장 콜백
-    # 플래너 응답 수신 및 번호별 저장 콜백
     def planner_response_callback(self, msg):
         try:
             raw_text = msg.data.strip()
             self.get_logger().info(f"📥 수신된 원본 플래너 데이터: {raw_text[:100]}...")
             
-            # 1. 먼저 정상적인 JSON 파싱을 시도합니다.
             try:
-                # 작은따옴표로 들어올 경우를 대비해 큰따옴표로 치환하는 방어 로직
                 clean_text = raw_text.replace("'", '"') if raw_text.startswith("{") else raw_text
                 planner_data = json.loads(clean_text)
             except Exception as parse_error:
-                # 2. JSON 파싱에 실패하면 강제 저장 모드 가동
                 self.get_logger().warn(f"⚠️ JSON 파싱 실패. 강제 저장 모드 가동: {parse_error}")
                 planner_data = {
                     "type": "recommended_routine",
@@ -144,18 +165,14 @@ class RehabUserInterface(Node):
             
             request_type = planner_data.get("type", "unknown")
             
-            # 에러 메시지만 달랑 왔다면 스킵
             if request_type in ["error", "unknown"] and "analysis" not in planner_data:
                 return
 
-            # 오늘 날짜 (2026-03-13 형식)
             date_only = datetime.now().strftime("%Y-%m-%d")
             
-            # 경로: user_id/date/planner
             db_path = f"{self.current_user_id}/{date_only}/planner"
             planner_ref = db.reference(db_path)
             
-            # 🌟 [핵심 수정] 무조건 가장 큰 번호를 찾아서 +1 하도록 완벽하게 변경
             existing_planners = planner_ref.get()
             next_idx = 1
             
@@ -164,26 +181,22 @@ class RehabUserInterface(Node):
                 for key in existing_planners.keys():
                     if key.startswith("planner_"):
                         try:
-                            # "planner_4"에서 "4"만 추출하여 숫자로 변환
                             idx = int(key.split("_")[1])
                             indices.append(idx)
                         except Exception:
                             pass
                 
-                # 가장 큰 숫자(예: 4)를 찾았다면 그 다음 번호(5)로 지정
                 if indices:
                     next_idx = max(indices) + 1
             elif isinstance(existing_planners, list):
-                # 파이어베이스가 가끔 리스트로 반환할 때를 대비한 방어 코드
                 next_idx = len(existing_planners)
-                if existing_planners[0] is None: # 인덱스 0이 비어있는 경우 보정
+                if existing_planners[0] is None:
                     next_idx = len(existing_planners)
                 else:
                     next_idx = len(existing_planners) + 1
 
             planner_key = f"planner_{next_idx}"
             
-            # 최종 저장
             planner_ref.child(planner_key).set(planner_data)
             self.get_logger().info(f"✅ 플래너 저장 완료: {db_path}/{planner_key}")
             
