@@ -103,19 +103,43 @@ colcon build --packages-select od_msg
 colcon build --packages-select rehab_assist_robot robot_control voice_processing object_detection
 ```
 
-3. 메인 시스템 런치 (Terminal 1)
+3. [PC1] 메인 제어 및 비전 시스템 실행
 
 ```bash
-# (참고: ros_set은 'source /opt/ros/humble/setup.bash' 커스텀 alias입니다.)
-ros_set
-source install/setup.bash
-ros2 launch rehab_assist_robot main_system.launch.py
+# [Terminal 1] 로봇 활성화 및 듀얼 카메라 런치
+roboton
+cd ~/cobot_ws/src/cobot2_ws/rehab_assist_robot/object_detection
+ros2 launch dual_cam.launch.py  # (또는 커스텀 alias 'cam' 사용)
+
+# [Terminal 2] 자세 분석
+ros2 run rehab_assist_robot pose_analyzer
+
+# [Terminal 3] 자세 교정 (로봇 제어)
+ros2 run rehab_assist_robot posture_corrector
+
+# [Terminal 4] 음성 어시스턴트
+ros2 run rehab_assist_robot voice_assistant
+
+# [Terminal 5] 시스템 컨트롤러
+ros2 run rehab_assist_robot system_controller
+
+# [Terminal 6] 안면 인식
+ros2 run rehab_assist_robot face_recognition
+
+# [Terminal 7] 운동 플래너
+ros2 run rehab_assist_robot exercise_planner
 ```
 
-4. 객체 및 자세 인식 노드 실행 (Terminal 2)
+4. [PC2] UI 서버 실행
 
 ```bash
+# [Terminal 8] 사용자 인터페이스
+ros2 run rehab_assist_robot user_interface
 ros_set
 source install/setup.bash
+```
+
+
+
 ros2 run object_detection pose_tracking_node
 ```
