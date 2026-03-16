@@ -34,7 +34,7 @@ YOLOv11을 활용한 실시간 자세 인식(Pose Tracking)과 안면 인식 기
 
 ## 🔄 알고리즘 플로우 차트 (Logic Flow)
 
-rehab_assist_robot_flowchart-Flow_chart_final.drawio.png
+(rehab_assist_robot_flowchart-Flow_chart_final.drawio.png)
 
 ---
 
