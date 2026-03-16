@@ -80,32 +80,26 @@ YOLOv11을 활용한 실시간 자세 인식(Pose Tracking)과 안면 인식 기
 **2. Python 라이브러리**
 YOLOv11 비전 처리 및 클라우드 연동을 위해 다음 패키지를 설치합니다.
 ```bash
-pip install ultralytics opencv-python numpy firebase-admin openai python-dotenv
+pip install ultr 탁ytics opencv-python numpy firebase-admin openai python-dotenv
 
-🚀 실행 순서 (How to Run)
+---
+## 🚀 실행 순서 (How to Run)
+
 1. 워크스페이스 생성 및 패키지 클론
-
-Bash
 mkdir -p ~/ros2_ws/src
 cd ~/ros2_ws/src
-git clone [https://github.com/kwakmoonjung/rehab_assist_robot.git](https://github.com/kwakmoonjung/rehab_assist_robot.git)
+git clone https://github.com/kwakmoonjung/rehab_assist_robot.git
 2. 프로젝트 빌드
-
-Bash
 cd ~/ros2_ws
 # 커스텀 메시지 패키지(od_msg) 우선 빌드
 colcon build --packages-select od_msg
 colcon build --packages-select rehab_assist_robot robot_control voice_processing object_detection
 3. 메인 시스템 런치 (Terminal 1)
-
-Bash
 # (참고: ros_set은 'source /opt/ros/humble/setup.bash' 커스텀 alias입니다.)
 ros_set
 source install/setup.bash
 ros2 launch rehab_assist_robot main_system.launch.py
 4. 객체 및 자세 인식 노드 실행 (Terminal 2)
-
-Bash
 ros_set
 source install/setup.bash
 ros2 run object_detection pose_tracking_node
