@@ -23,11 +23,19 @@ YOLOv11을 활용한 실시간 자세 인식(Pose Tracking)과 안면 인식 기
 
 ## 🛠️ 시스템 설계 (System Architecture)
 
-시스템은 크게 Perception(인식), Decision(판단/DB), Control(제어/안내) 세 파트로 구성된 **다중 PC 분산 통신(DDS) 구조**입니다.
+본 시스템은 다중 PC 분산 통신(DDS) 구조를 채택하여 Perception(인식), Decision(판단), Control(제어)의 부하를 효율적으로 분산 처리합니다.
 
-1.  **Perception:** 카메라 센서를 통해 들어온 이미지 데이터를 바탕으로 얼굴 인식을 수행하고, YOLOv11 Pose 모델로 관절 데이터를 추출합니다.
-2.  **Decision:** 추출된 자세 데이터를 분석하여 현재 운동의 정확도를 판별하고, DB와 연동하여 웹 UI에 상태를 실시간 업데이트합니다.
-3.  **Control:** ROS 2 로봇 제어 노드를 통해 두산 M0609 로봇 팔의 모션을 제어(자세 가이드 및 초기화)하며, `voice_processing` 노드를 통해 피드백을 출력합니다.
+### 🌐 ROS 2 노드 통신 구조 (Node Architecture)
+
+![ROS 2 노드 아키텍처](여기에_노드_아키텍처_이미지명.png)
+
+각 핵심 노드(Node)의 역할과 데이터 흐름은 다음과 같습니다.
+
+1. **`VoiceAssistant` (메인 허브):** 전체 시스템의 관제탑 역할을 합니다. 사용자의 음성 명령과 얼굴 인식 결과를 수합하여 `SystemController`로 제어 명령(`/system_command`)을 하달하고, `ExercisePlanner`와 통신하여 맞춤형 루틴을 계획합니다.
+2. **`FaceRecognition`:** 카메라를 통해 사용자를 식별하고, 식별된 유저 정보(`/recognized_user`)를 방송합니다.
+3. **`SystemController`:** 허브로부터 명령을 받아 로봇의 운동 상태(`/set_exercise_state`)를 설정하고, 교정이 필요할 시 목표 3D 좌표(`/publish_target_3d`)를 계산해 냅니다.
+4. **`PostureAnalyzer` & `PostureCorrector`:** 실시간으로 관절 데이터를 분석하여 운동 결과를 도출(`/exercise_result`)하며, 잘못된 자세가 감지되면 로봇 암을 직접 제어하여 물리적인 교정을 수행합니다.
+5. **`UserInterface`:** 최종 분석된 운동 결과와 시스템 상태를 수신하여 Firebase 클라우드 DB에 전송하고, 웹 기반 UI에 실시간으로 렌더링합니다.
 
 ---
 
