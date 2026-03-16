@@ -62,7 +62,7 @@ YOLOv11을 활용한 실시간 자세 인식(Pose Tracking)과 안면 인식 기
 | :--- | :--- | :--- |
 | **Robot** | Doosan M0609 | 6축 협동 로봇 (가반하중 6kg) |
 | **Vision 1** | Realsense Camera | Pose Tracking & Face Recognition |
-| **Vision 2** | Realsense Camera | Face Recognition 보조 |
+| **Vision 2** | Realsense Camera | Pose Tracking |
 | **Compute 1 (Main)**| MSI Katana 17 B13V | ROS 2 메인 컨트롤 및 딥러닝 비전 추론 |
 | **Compute 2 (UI)** | Samsung 550XBE/330XBE | Firebase DB 연동 및 웹 UI 렌더링 서버 |
 | **Audio** | Webcam | Voice Recognition (음성 인식 마이크) |
