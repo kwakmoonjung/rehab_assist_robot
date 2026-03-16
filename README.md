@@ -135,7 +135,4 @@ ros2 run rehab_assist_robot exercise_planner
 ```bash
 # [Terminal 8] 사용자 인터페이스
 ros2 run rehab_assist_robot user_interface
-ros_set
-source install/setup.bash
-ros2 run object_detection pose_tracking_node
 ```
